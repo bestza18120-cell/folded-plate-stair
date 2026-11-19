@@ -195,6 +195,13 @@
   .rb-legend i{display:inline-block; width:18px; height:3px; border-radius:2px;}
   .rb-legend i.dot{width:7px; height:7px; border-radius:50%; background:var(--steel);}
   .rb-legend i.ring{width:10px; height:10px; border-radius:50%; border:1.5px solid var(--sdl); background:transparent;}
+#updateBar{position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:1000; 
+    background:var(--surface); color:var(--ink); border:1px solid var(--panel-border); border-radius:10px; padding:10px 14px; box-shadow:var(--panel-shadow-hover);
+    font-family:'JetBrains Mono',monospace; font-size:0.82rem; max-width:calc(100vw - 24px);}
+  #updateBar button{padding:6px 12px; font-size:0.8rem;}
+  #updateBar .upd-row{display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px;}
+  #updateBar .upd-btns{display:flex; gap:8px; white-space:nowrap;}
+  #updateBar .upd-note{font-size:0.7rem; color:var(--ink-soft); margin-top:6px;}
   .theme-btn{padding:6px 12px; font-size:0.78rem;}
   @media (prefers-reduced-motion: reduce){ * {transition:none !important;} .panel:hover{transform:none;} }
   @media (max-width:600px){ .field input, .field select{width:76px;} header h1{font-size:1.2rem;} }
@@ -431,7 +438,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const APP_DATE = '2026-11-19';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
@@ -2006,6 +2013,7 @@ function buildSavedAppHTML(){
   recompute();
   toastEl.style.opacity = '0';
   const docClone = document.cloneNode(true);
+  const ub = docClone.getElementById('updateBar'); if (ub) ub.remove();
   const boot = docClone.getElementById('stateBootstrap');
   if (boot) boot.textContent = `window.__SAVED_STATE__ = ${JSON.stringify(state)};`;
   return '<!DOCTYPE html>\n' + docClone.documentElement.outerHTML;
@@ -2073,6 +2081,13 @@ $('#saveAsBtn').addEventListener('click', doSaveAs);
 $('#saveOverwriteBtn').addEventListener('click', doSaveOverwrite);
 
 /* ============== INIT / RESTORE ============== */
+let restoredAfterUpdate = false;
+if (!window.__SAVED_STATE__){
+  try {
+    const pend = sessionStorage.getItem('stairPendingState');
+    if (pend){ window.__SAVED_STATE__ = JSON.parse(pend); sessionStorage.removeItem('stairPendingState'); restoredAfterUpdate = true; }
+  } catch(e){}
+}
 if (window.__SAVED_STATE__){
   try {
     const d = state, r = window.__SAVED_STATE__;
@@ -2120,7 +2135,7 @@ if (window.__SAVED_STATE__){
     }
     nextId = (state.loads.length ? Math.max(...state.loads.map(l=>l.id)) : 0) + 1;
     nextSupportId = (state.supports.length ? Math.max(...state.supports.map(s=>s.id)) : 0) + 1;
-    saveStatusEl.textContent = 'โหลดค่าที่บันทึกไว้ก่อนหน้าแล้ว · กด Save เพื่อบันทึกทับไฟล์นี้ หรือ Save As เพื่อแยกไฟล์ใหม่';
+    saveStatusEl.textContent = restoredAfterUpdate ? `อัปเดตเป็น v${APP_VERSION} แล้ว · ค่าที่กรอกไว้ยังอยู่ครบ` : 'โหลดค่าที่บันทึกไว้ก่อนหน้าแล้ว · กด Save เพื่อบันทึกทับไฟล์นี้ หรือ Save As เพื่อแยกไฟล์ใหม่';
   } catch(e){ console.error('restore failed', e); }
 }
 $('#rbFlight').addEventListener('change', ()=>recompute());
@@ -2137,9 +2152,49 @@ recompute();
 <script>
 /* PWA: register the service worker only when served over http(s) (e.g. GitHub Pages).
    Opening the file directly from disk (file://) or inside a sandboxed viewer skips this. */
+function verCmp(a, b){
+  const A = String(a).split('.').map(Number), B = String(b).split('.').map(Number);
+  for (let i=0;i<Math.max(A.length,B.length);i++){ const d = (A[i]||0) - (B[i]||0); if (d) return d; }
+  return 0;
+}
+let updateShown = false;
+function showUpdateBar(newVer){
+  if (updateShown) return; updateShown = true;
+  const bar = document.createElement('div');
+  bar.id = 'updateBar';
+  bar.innerHTML = `<div class="upd-row"><span>🔔 มีเวอร์ชันใหม่ <b>v${newVer}</b> (ตอนนี้ใช้ v${APP_VERSION})</span>
+    <span class="upd-btns"><button class="primary" id="updNow">อัปเดตเลย</button><button id="updLater">ภายหลัง</button></span></div>
+    <div class="upd-note">ค่าที่กรอกไว้จะยังอยู่หลังอัปเดต</div>`;
+  document.body.appendChild(bar);
+  document.getElementById('updLater').onclick = ()=>{ bar.remove(); };
+  document.getElementById('updNow').onclick = async ()=>{
+    try {
+      if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
+      sessionStorage.setItem('stairPendingState', JSON.stringify(state));
+    } catch(e){}
+    try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch(e){}
+    location.reload();
+  };
+}
+async function checkForUpdate(){
+  try {
+    const res = await fetch(`index.html?check=${Date.now()}`, { cache:'no-store' });
+    if (!res.ok) return;
+    const m = (await res.text()).match(/const APP_VERSION = '([0-9.]+)'/);
+    if (m && verCmp(m[1], APP_VERSION) > 0) showUpdateBar(m[1]);
+  } catch(e){ /* offline: try again later */ }
+}
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   window.addEventListener('load', ()=>{
-    try { navigator.serviceWorker.register('sw.js').catch(()=>{}); } catch(e){}
+    try {
+      navigator.serviceWorker.register('sw.js').then(reg=>{
+        // only check for updates where the app is actually served with its service worker (e.g. GitHub Pages)
+        checkForUpdate();
+        setInterval(()=>{ checkForUpdate(); reg.update().catch(()=>{}); }, 30*60*1000);
+        document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState === 'visible') checkForUpdate(); });
+        window.addEventListener('online', checkForUpdate);
+      }).catch(()=>{});
+    } catch(e){}
   });
 }
 </script>

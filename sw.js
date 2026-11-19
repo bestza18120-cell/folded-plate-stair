@@ -1,6 +1,6 @@
 // Service worker: caches the app so it opens offline after the first visit.
 // Keep CACHE in step with APP_VERSION in index.html so installed apps pick up each release.
-const CACHE = 'stair-folded-v1.4.0';
+const CACHE = 'stair-folded-v1.5.0';
 const ASSETS = [
   './',
   './index.html',
@@ -27,6 +27,8 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  // version checks always go to the network and are never cached
+  if (url.searchParams.has('check')) return;
 
   // the app page: network first (to get updates), cache as fallback when offline
   if (req.mode === 'navigate') {
