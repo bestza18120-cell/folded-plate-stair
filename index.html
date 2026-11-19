@@ -162,14 +162,14 @@
 
   table{width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:0.82rem;}
   th, td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--paper-line);}
-  th{color:var(--ink-soft); font-weight:600; text-transform:uppercase; font-size:0.68rem; letter-spacing:0.05em;}
+  th{color:var(--ink-soft); font-weight:600; font-size:0.7rem; letter-spacing:0.02em;}
   td.num{text-align:right; font-weight:600;}
   tr:last-child td{border-bottom:none;}
   .table-scroll{overflow-x:auto;}
 
   .hint{font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--ink-soft); padding:8px 16px; background:var(--paper); border-bottom:1px solid var(--paper-line); line-height:1.6;}
 
-  .max-badge{display:inline-block; font-family:'JetBrains Mono',monospace; font-size:0.72rem; padding:2px 8px; border-radius:10px; margin-left:6px;}
+  .max-badge{display:inline-block; text-transform:none; letter-spacing:0; font-family:'JetBrains Mono',monospace; font-size:0.72rem; padding:2px 8px; border-radius:10px; margin-left:6px;}
   .max-badge.shear{background:var(--shear-soft); color:var(--shear-fg);}
   .max-badge.moment{background:var(--moment-soft); color:var(--moment-fg);}
 
@@ -381,9 +381,30 @@
       <table id="checkTable"><tbody></tbody></table>
     </div>
     <div class="hint">
-      d = h − covering − db/2 · ใช้ความหนาแผ่นพับ t เป็นหน้าตัดออกแบบของช่วงบันได (แบบอนุรักษ์) · As,min = 0.0018bh (fy ≥ 4000) / 0.0020bh (fy &lt; 4000) · s,max เหล็กหลัก = min(3h, 45 cm), เหล็กกระจาย = min(5h, 45 cm) · ระยะเรียงปัดลงทีละ 2.5 cm<br>
+      d = h − covering − db/2 · ใช้ความหนาแผ่นพับ t เป็นหน้าตัดออกแบบของช่วงบันได (แบบอนุรักษ์) · As,min = 0.0025bh (fy &lt; 4000) / 0.0018bh (fy = 4000) / 0.0018·(4000/fy)·bh ≥ 0.0014bh (fy &gt; 4000) · s,max เหล็กหลัก = min(3h, 45 cm), เหล็กกระจาย = min(5h, 45 cm) · ระยะเรียงปัดลงทีละ 2.5 cm<br>
       φVc = φ·0.53√f'c·b·d (ใช้ |Vu| สูงสุดในช่วง ไม่ลดค่าที่ระยะ d) · ความหนาต่ำสุดตาม ACI ใช้ช่วงราบระหว่าง support (L/20 ช่วงเดี่ยว, L/24 ปลายต่อเนื่องหนึ่งข้าง, L/28 ต่อเนื่องสองข้าง, L/10 ยื่น) × (0.4 + fy/7000) เป็นค่าตรวจเบื้องต้นเท่านั้น<br>
       ⚠ Detail พับผ้า: ที่มุมพับด้านใน (re-entrant corner) เหล็กรับแรงดึงห้ามดัดอ้อมมุมด้านใน เพราะจะดึงจนคอนกรีตหุ้มระเบิดออก ให้ใช้เหล็กไขว้ผ่านมุมแล้วฝังยึดเลยมุมอย่างน้อยระยะฝัง ld
+    </div>
+  </div>
+
+  <!-- DEFLECTION -->
+  <div class="panel">
+    <div class="panel-head"><h2>ตรวจการแอ่นตัว (ACI 318-19 · ต่อ 1 m กว้าง) <span id="maxDefl" class="max-badge moment"></span></h2></div>
+    <div class="controls">
+      <div class="field"><label style="text-transform:none;">ξ ระยะยาว (≥ 5 ปี = 2.0)</label><input type="text" inputmode="decimal" id="dfXi"></div>
+      <div class="field"><label>LL ที่คงค้าง (%)</label><input type="text" inputmode="decimal" id="dfSus"></div>
+      <div class="field"><label>เกณฑ์ LL ทันที</label><select id="dfLimLL"><option value="360">L/360</option><option value="180">L/180</option></select></div>
+      <div class="field"><label>เกณฑ์ระยะยาว + LL</label><select id="dfLim"><option value="240">L/240 (ไม่มีส่วนที่เสียหายง่าย)</option><option value="480">L/480 (มีส่วนที่เสียหายง่าย)</option></select></div>
+    </div>
+    <div class="panel-body"><div class="diagram-wrap">
+      <svg id="deflSvg" viewBox="0 0 900 200" preserveAspectRatio="xMidYMid meet" style="width:100%; height:auto;"></svg>
+    </div></div>
+    <div class="panel-body table-scroll" style="padding-top:0;"><table id="deflTable"><tbody></tbody></table></div>
+    <div class="hint">
+      น้ำหนักใช้งาน: D = DL + SDL, L = LL (case อื่นไม่รวม) · Ec = 15,100√f'c · Es = 2.04×10⁶ ksc · fr = 2.0√f'c · Ig, Icr ต่อแถบ 1 m จากเหล็กที่เลือกในส่วนออกแบบ (ไม่คิดเหล็กรับแรงอัดใน Icr)<br>
+      Ie = Icr / (1 − ((⅔)Mcr/Ma)²(1 − Icr/Ig)) เมื่อ Ma &gt; ⅔Mcr, ไม่งั้น Ie = Ig (ACI 318-19 ตาราง 24.2.3.5) · คิด Ie ต่อช่วงจาก Ma สูงสุดในช่วงนั้น แล้ววิเคราะห์ด้วย EI ต่างกันรายช่วง<br>
+      ΔL = Δ(D+L) − Δ(D) · ระยะยาว: λΔ = ξ/(1 + 50ρ′) คูณ Δ ของน้ำหนักคงค้าง (D + %LL) · ตรวจ: ΔL ≤ L/360 และ λΔ·Δคงค้าง + ΔL ≤ L/240 หรือ L/480 (ACI 318-19 ตาราง 24.2.2)<br>
+      กราฟ: เส้นทึบ = Δ ทันทีจาก D+L · เส้นประ = Δ ระยะยาว + LL (ค่าลบ = แอ่นลง) · ช่วงยื่นใช้ L = ความยาวยื่น
     </div>
   </div>
 
@@ -418,6 +439,7 @@ let state = {
   ],
   view: 'combo:1',
   design: { fc:240, fy:4000, fyT:4000, cover:2.0, db:12, dbT:10, phiB:0.90, phiV:0.85 },
+  defl: { xi:2.0, sus:0, limLong:240, limLL:360 },
   geomVer: 2,
   ui: { theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light' }
 };
@@ -438,7 +460,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const APP_DATE = '2026-11-19';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
@@ -593,7 +615,8 @@ function gaussSolve(A, b){
   return M.map((row,i)=> Math.abs(row[i])<1e-9?0:row[n]/row[i]);
 }
 
-function solveReactions(){
+function solveReactions(opts){
+  opts = opts || {};
   const supports = getActiveSupports();
   const result = { reactions:{}, valid:true, message:'' };
   const L = geom().L;
@@ -607,6 +630,7 @@ function solveReactions(){
 
   const eps = Math.max(1e-6, L*1e-6);
   let xset = new Set([0, round4(L)]);
+  (opts.extraX || []).forEach(x=>xset.add(round4(clamp(x,0,L))));
   supports.forEach(s=>xset.add(round4(s.pos)));
   LOADS.forEach(ld=>{
     if (ld.kind==='point' || ld.kind==='moment') xset.add(round4(clamp(ld.pos,0,L)));
@@ -614,7 +638,7 @@ function solveReactions(){
   });
   let nodes = Array.from(xset).sort((a,b)=>a-b);
   nodes = nodes.filter((x,i)=> i===0 || x-nodes[i-1] > eps);
-  const n = nodes.length, ndof = 2*n, EI = 1e6;
+  const n = nodes.length, ndof = 2*n, EI0 = 1e6;
   function nodeIdx(x){ let best=0, bd=Infinity; for (let i=0;i<n;i++){ const d=Math.abs(nodes[i]-x); if(d<bd){bd=d;best=i;} } return best; }
 
   const K = Array.from({length:ndof},()=>new Array(ndof).fill(0));
@@ -626,6 +650,7 @@ function solveReactions(){
   for (let e=0;e<n-1;e++){
     const x1=nodes[e], x2=nodes[e+1], Le=x2-x1;
     if (Le < eps) continue;
+    const EI = opts.EIfn ? opts.EIfn((x1+x2)/2) : EI0;
     const kk = EI/(Le*Le*Le);
     const ke = [
       [12*kk, 6*Le*kk, -12*kk, 6*Le*kk],
@@ -660,6 +685,8 @@ function solveReactions(){
     if (s.type==='fixed'){ let Rm=0; for (let c=0;c<ndof;c++) Rm += K[2*i+1][c]*d[c]; Rm -= F[2*i+1]; out.M = -Rm; }
     result.reactions[s.key] = out;
   });
+  result.nodes = nodes;
+  result.disp = nodes.map((_,i)=>d[2*i]);   // vertical displacement (m, up +) — real only when opts.EIfn gives real EI
   return result;
 }
 
@@ -931,6 +958,7 @@ function polar(cx,cy,r,a){ const rad=a*Math.PI/180; return {x:cx+r*Math.cos(rad)
 /* ============== RENDER: SFD / BMD ============== */
 function renderDiagram(svg, xs, ys, color, unit, ys2){
   svg.innerHTML = '';
+  svg.__hd = null;
   const G = geom(), L = G.L;
   const W=900, H=200, marginX=70, marginTop=20, marginBottom=36;
   const plotH = H - marginTop - marginBottom;
@@ -962,14 +990,56 @@ function renderDiagram(svg, xs, ys, color, unit, ys2){
     el('circle', {cx:px,cy:py,r:3.5, fill:color}, svg);
     el('text', {x:px, y:v>=0?py-8:py+16, 'text-anchor':'middle','font-size':'10','font-family':'JetBrains Mono, monospace','font-weight':'700', fill:color}, svg).textContent = `${v.toFixed(2)} @${xs[i].toFixed(2)}`;
   });
-  el('text', {x:12, y:14, 'font-size':'10','font-family':'JetBrains Mono, monospace', fill:C('dim')}, svg).textContent = unit;
+  el('text', {x:12, y:H-4, 'font-size':'10','font-family':'JetBrains Mono, monospace', fill:C('dim')}, svg).textContent = unit;
+  const um = unit.match(/^(\S+)\s*\(([^)]+)\)/);
+  svg.__hd = { xs, ys, ys2, xS, yS, W, H, marginX, marginTop, marginBottom, L, color,
+               name: um ? um[1] : '', u: um ? um[2].replace('/m','') : '' };
+  bindHover(svg);
+}
+function interpAt(xs, ys, x){
+  let lo = 0, hi = xs.length-1;
+  if (x <= xs[0]) return ys[0];
+  if (x >= xs[hi]) return ys[hi];
+  while (hi - lo > 1){ const m = (lo+hi)>>1; if (xs[m] <= x) lo = m; else hi = m; }
+  const dx = xs[hi]-xs[lo];
+  return dx < 1e-12 ? ys[hi] : ys[lo] + (ys[hi]-ys[lo])*(x-xs[lo])/dx;
+}
+function bindHover(svg){
+  if (svg.__hoverBound) return;
+  svg.__hoverBound = true;
+  svg.style.cursor = 'crosshair';
+  svg.style.touchAction = 'pan-y';
+  const clear = ()=>{ const g = svg.querySelector('g.hov'); if (g) g.remove(); };
+  const move = e=>{
+    const hd = svg.__hd; if (!hd) return;
+    const rect = svg.getBoundingClientRect();
+    const px = (e.clientX - rect.left) * (hd.W / rect.width);
+    if (px < hd.marginX - 4 || px > hd.W - hd.marginX + 4){ clear(); return; }
+    const x = clamp((px - hd.marginX)/(hd.W - 2*hd.marginX)*hd.L, 0, hd.L);
+    const v1 = interpAt(hd.xs, hd.ys, x), v2 = hd.ys2 ? interpAt(hd.xs, hd.ys2, x) : null;
+    clear();
+    const g = el('g', {class:'hov', 'pointer-events':'none'}, svg);
+    const X = hd.xS(x);
+    el('line', {x1:X, y1:hd.marginTop, x2:X, y2:hd.H-hd.marginBottom, stroke:C('ink'),'stroke-width':1,'stroke-dasharray':'2 3', opacity:'0.7'}, g);
+    [v1, v2].forEach(v=>{ if (v===null) return; el('circle', {cx:X, cy:hd.yS(v), r:4, fill:C('surface'), stroke:hd.color,'stroke-width':2}, g); });
+    const lines = [`x = ${x.toFixed(2)} m`];
+    if (v2===null) lines.push(`${hd.name} = ${v1.toFixed(2)} ${hd.u}`);
+    else { lines.push(`${hd.labels ? hd.labels[0] : 'สูงสุด'} ${v1.toFixed(2)} ${hd.u}`); lines.push(`${hd.labels ? hd.labels[1] : 'ต่ำสุด'} ${v2.toFixed(2)} ${hd.u}`); }
+    const w = Math.max(...lines.map(t=>t.length))*6.6 + 16, h = lines.length*14 + 10;
+    const bx = X + 12 + w > hd.W - 6 ? X - 12 - w : X + 12, by = hd.marginTop;
+    el('rect', {x:bx, y:by, width:w, height:h, rx:5, fill:C('surface'), stroke:hd.color,'stroke-width':1.2, opacity:'0.96'}, g);
+    lines.forEach((t,i)=> el('text', {x:bx+8, y:by+16+i*14, 'font-size':'11','font-family':'JetBrains Mono, monospace','font-weight': i? '700':'500', fill: i? hd.color : C('ink-soft')}, g).textContent = t);
+  };
+  svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerdown', move);
+  svg.addEventListener('pointerleave', clear);
 }
 
 /* ============== DESIGN (SDM, per 1 m width, ksc units) ============== */
 const BARS = [6,9,10,12,16,20];
 function barName(db){ return (db<=9 ? 'RB' : 'DB') + db; }
 function barArea(db){ return Math.PI*Math.pow(db/10,2)/4; } // cm²
-function rhoMinFor(fy){ return fy < 4000 ? 0.0020 : Math.max(0.0014, 0.0018*4000/fy); }
+function rhoMinFor(fy){ return fy < 4000 ? 0.0025 : Math.max(0.0014, 0.0018*4000/fy); }
 function beta1(fc){ return fc <= 280 ? 0.85 : Math.max(0.65, 0.85 - 0.05*(fc-280)/70); }
 
 function pickSpacing(As, db, smax){
@@ -1054,6 +1124,7 @@ function renderDesign(){
   if (!E.valid){
     tb.innerHTML = `<tr><td class="fail">⚠ ${E.message}</td></tr>`;
     renderRebar(null);
+    renderDeflection(null);
     return;
   }
   const D = state.design;
@@ -1109,7 +1180,7 @@ function renderDesign(){
   });
   minThickness().forEach(s=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>ความหนาต่ำสุด</td><td>${s.kind} ${s.a.toFixed(2)}–${s.b.toFixed(2)} (L=${s.L.toFixed(2)})</td><td class="num">h = ${(s.h*100).toFixed(1)} cm</td><td class="num">L/${s.div}×${(0.4+D.fy/7000).toFixed(2)} = ${(s.hmin*100).toFixed(1)} cm</td><td>${s.ok?'<span class="pass">✓ ผ่าน</span>':'<span class="fail">✗ ต้องตรวจการแอ่นตัว</span>'}</td>`;
+    tr.innerHTML = `<td>ความหนาต่ำสุด</td><td>${s.kind} ${s.a.toFixed(2)}–${s.b.toFixed(2)} (L=${s.L.toFixed(2)})</td><td class="num">h = ${(s.h*100).toFixed(1)} cm</td><td class="num">L/${s.div}×${(0.4+D.fy/7000).toFixed(2)} = ${(s.hmin*100).toFixed(1)} cm</td><td>${s.ok?'<span class="pass">✓ ผ่าน</span>':'<span class="fail">✗ ดูผลตรวจการแอ่นตัว</span>'}</td>`;
     cb.appendChild(tr);
   });
 
@@ -1130,6 +1201,85 @@ function renderDesign(){
     sumEl.appendChild(c);
   });
   renderRebar(rows);
+  renderDeflection(rows);
+}
+
+/* ============== DEFLECTION (ACI 318-19) ============== */
+function crackedSection(As, d, h, n){
+  // per 100 cm strip, cm units; singly reinforced
+  const b = 100, Ig = b*h*h*h/12;
+  if (!(As > 0) || !(d > 0)) return { Ig, Icr: Ig, kd: h/2 };
+  const nr = n*As/(b*d);
+  const k = Math.sqrt(2*nr + nr*nr) - nr, kd = k*d;
+  const Icr = b*kd*kd*kd/3 + n*As*(d-kd)*(d-kd);
+  return { Ig, Icr, kd };
+}
+function effectiveI(Ma, Mcr, Ig, Icr){
+  if (Ma <= (2/3)*Mcr) return Ig;
+  const r = (2/3)*Mcr/Ma;
+  return Math.min(Ig, Icr/(1 - r*r*(1 - Icr/Ig)));
+}
+function deflectionCase(fmap, spans, rows){
+  const D = state.design;
+  const Ec = 15100*Math.sqrt(D.fc), n = 2.04e6/Ec, fr = 2.0*Math.sqrt(D.fc);
+  const base = analyze(fmap);            // moments (uniform EI) to find Ma per span
+  if (!base.rr.valid) return null;
+  const info = spans.map(sp=>{
+    let Ma = 0, xa = (sp.a+sp.b)/2, sg = 1;
+    base.diag.xs.forEach((x,i)=>{ if (x>=sp.a-1e-9 && x<=sp.b+1e-9){ const M = base.diag.M[i]; if (Math.abs(M) > Ma){ Ma = Math.abs(M); xa = x; sg = M>=0?1:-1; } } });
+    const rg = regionAtX(xa), r = rows.find(q=>q.rg.key===rg.key);
+    const des = sg>0 ? r.bot : r.top, other = sg>0 ? r.top : r.bot;
+    const h = rg.h*100, cs = crackedSection(des.AsProv, des.d, h, n);
+    const Mcr = fr*cs.Ig/(h/2)/1e5;                         // t·m
+    const Ie = effectiveI(Ma, Mcr, cs.Ig, cs.Icr);          // cm⁴
+    const rhoC = other.AsProv/(100*other.d);                // compression steel ratio ρ′
+    return { ...sp, Ma, xa, h, Ig:cs.Ig, Icr:cs.Icr, Mcr, Ie, EI: Ec*Ie*1e-7, rhoC };   // EI in t·m²
+  });
+  const EIfn = x=>{ const s = info.find(q=>x>=q.a-1e-9 && x<=q.b+1e-9); return s ? s.EI : info[0].EI; };
+  const G = geom(), extraX = []; for (let i=0;i<=160;i++) extraX.push(G.L*i/160);
+  FACT = fmap || {};
+  const rr = solveReactions({ EIfn, extraX });
+  return { info, xs: rr.nodes, delta: rr.disp.map(v=>-v*1000) };   // mm, down +
+}
+function renderDeflection(rows){
+  const tb = $('#deflTable tbody'), svg = $('#deflSvg');
+  tb.innerHTML = ''; svg.innerHTML = ''; svg.__hd = null; $('#maxDefl').textContent = '';
+  if (!rows) return;
+  const P = state.defl, spans = minThickness();
+  if (!spans.length) return;
+  const susF = clamp((P.sus||0)/100, 0, 1);
+  const Dc = deflectionCase({ DL:1, SDL:1 }, spans, rows);
+  const Tc = deflectionCase({ DL:1, SDL:1, LL:1 }, spans, rows);
+  if (!Dc || !Tc){ tb.innerHTML = `<tr><td class="fail">⚠ วิเคราะห์ไม่ได้</td></tr>`; return; }
+  const xs = Tc.xs;
+  const dD = Dc.delta, dT = Tc.delta, dL = dT.map((v,i)=>v - dD[i]);
+  const lamOf = x=>{ const s = Tc.info.find(q=>x>=q.a-1e-9 && x<=q.b+1e-9) || Tc.info[0]; return P.xi/(1 + 50*s.rhoC); };
+  const dLT = xs.map((x,i)=> lamOf(x)*(dD[i] + susF*dL[i]) + dL[i]);
+
+  const h = document.createElement('tr');
+  h.innerHTML = `<th>ช่วง</th><th>Ma D+L (t·m)</th><th>Mcr (t·m)</th><th>Ig / Icr / Ie (cm⁴)</th><th>λΔ</th><th>Δ ทันที D+L (mm)</th><th>ΔL (mm)</th><th>ระยะยาว + LL (mm)</th><th>สถานะ</th>`;
+  tb.appendChild(h);
+  let allOk = true, worst = 0;
+  Tc.info.forEach(s=>{
+    let mT=0, mL=0, mLT=0;
+    xs.forEach((x,i)=>{ if (x>=s.a-1e-9 && x<=s.b+1e-9){ mT=Math.max(mT,Math.abs(dT[i])); mL=Math.max(mL,Math.abs(dL[i])); mLT=Math.max(mLT,Math.abs(dLT[i])); } });
+    const limL = s.L*1000/P.limLL, limLT = s.L*1000/P.limLong;
+    const ok = mL <= limL + 1e-9 && mLT <= limLT + 1e-9;
+    allOk = allOk && ok; worst = Math.max(worst, mLT);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${s.kind} ${s.a.toFixed(2)}–${s.b.toFixed(2)} (L=${s.L.toFixed(2)})</td>
+      <td class="num">${fmt(s.Ma)}</td><td class="num">${fmt(s.Mcr)}</td>
+      <td class="num">${s.Ig.toFixed(0)} / ${s.Icr.toFixed(0)} / ${s.Ie.toFixed(0)}</td>
+      <td class="num">${(P.xi/(1+50*s.rhoC)).toFixed(2)}</td>
+      <td class="num">${mT.toFixed(1)}</td>
+      <td class="num">${mL.toFixed(1)} <small>≤ ${limL.toFixed(1)}</small></td>
+      <td class="num">${mLT.toFixed(1)} <small>≤ ${limLT.toFixed(1)}</small></td>
+      <td>${ok ? '<span class="pass">✓ ผ่าน</span>' : '<span class="fail">✗ ไม่ผ่าน</span>'}</td>`;
+    tb.appendChild(tr);
+  });
+  renderDiagram(svg, xs, dT.map(v=>-v), C('moment'), 'Δ (mm) · ทึบ = ทันที D+L · ประ = ระยะยาว + LL', dLT.map(v=>-v));
+  if (svg.__hd) svg.__hd.labels = ['ทันที D+L', 'ระยะยาว+LL'];
+  $('#maxDefl').textContent = `ระยะยาว + LL สูงสุด ${worst.toFixed(1)} mm ${allOk ? '✓' : '✗'}`;
 }
 
 /* ============== REBAR SKETCH ==============
@@ -1858,6 +2008,7 @@ function renderLoadList(){
 const BIND = [
   ['#gB', ()=>state, 'B'],
   ['#lGamma', ()=>state.area, 'gamma'],
+  ['#dfXi', ()=>state.defl, 'xi'], ['#dfSus', ()=>state.defl, 'sus'],
   ['#dFc', ()=>state.design, 'fc'], ['#dFy', ()=>state.design, 'fy'], ['#dFyT', ()=>state.design, 'fyT'],
   ['#dCover', ()=>state.design, 'cover'], ['#dPhiB', ()=>state.design, 'phiB'], ['#dPhiV', ()=>state.design, 'phiV'],
 ];
@@ -1865,6 +2016,7 @@ const LIMITS = { R:[0.05,0.5], T:[0.1,1], n:[2,60], t:[0.05,1], B:[0.3,10], L:[0
 function syncInputs(){
   BIND.forEach(([sel,obj,key])=>{ $(sel).value = obj()[key]; });
   $('#dDb').value = state.design.db; $('#dDbT').value = state.design.dbT;
+  $('#dfLim').value = String(state.defl.limLong); $('#dfLimLL').value = String(state.defl.limLL);
 }
 BIND.forEach(([sel,obj,key])=>{
   const inp = $(sel);
@@ -2094,7 +2246,7 @@ if (window.__SAVED_STATE__){
     state = { ...d, ...r,
       area:{...d.area, ...(r.area||{})},
       autoActive:{...d.autoActive, ...(r.autoActive||{})},
-      design:{...d.design, ...(r.design||{})}, ui:{...d.ui, ...(r.ui||{})} };
+      design:{...d.design, ...(r.design||{})}, defl:{...d.defl, ...(r.defl||{})}, ui:{...d.ui, ...(r.ui||{})} };
     const needShift = !r.geomVer;
     if (r.geo && !r.segs){ // migrate single-flight save
       const g = r.geo; state.B = g.B ?? d.B;
@@ -2139,6 +2291,8 @@ if (window.__SAVED_STATE__){
   } catch(e){ console.error('restore failed', e); }
 }
 $('#rbFlight').addEventListener('change', ()=>recompute());
+$('#dfLim').addEventListener('change', e=>{ state.defl.limLong = +e.target.value; recompute(); });
+$('#dfLimLL').addEventListener('change', e=>{ state.defl.limLL = +e.target.value; recompute(); });
 $('#themeBtn').addEventListener('click', ()=>{
   state.ui.theme = state.ui.theme === 'dark' ? 'light' : 'dark';
   applyTheme();
