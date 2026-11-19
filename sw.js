@@ -1,6 +1,6 @@
 // Service worker: caches the app so it opens offline after the first visit.
 // Bump CACHE when index.html changes so installed apps pick up the new version.
-const CACHE = 'stair-folded-v1';
+const CACHE = 'stair-folded-v2';
 const ASSETS = [
   './',
   './index.html',
