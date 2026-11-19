@@ -119,6 +119,9 @@
   }
   .field select{width:auto; cursor:pointer;}
   .field input:focus, .field select:focus{outline:2px solid var(--steel); outline-offset:1px;}
+  .combo-in{font-family:'JetBrains Mono',monospace; font-size:0.8rem; padding:4px 6px; border:1.5px solid var(--ink); border-radius:3px; background:var(--paper); color:var(--ink);}
+  #comboTable td{padding:5px 6px;}
+  #comboTable th{padding:5px 6px;}
   .seg-row .k{font-weight:700; min-width:96px;}
   .seg-row .info{color:var(--ink-soft); font-size:0.72rem;}
   .seg-row button.mv{padding:3px 7px; font-size:0.72rem;}
@@ -274,21 +277,23 @@
     <div id="loadList"></div>
   </div>
 
-  <!-- LOAD COMBINATION -->
+  <!-- LOAD CASE & COMBINATION -->
   <div class="panel">
-    <div class="panel-head"><h2>Load Combination (Factor)</h2></div>
+    <div class="panel-head"><h2>Load Case &amp; Load Combination</h2></div>
     <div class="controls">
-      <label style="display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:0.82rem; cursor:pointer;">
-        <input type="checkbox" id="comboEnabled" style="width:16px;height:16px;cursor:pointer;">
-        แสดง Reaction / SFD / BMD เป็น Factored Load (Ultimate)
-      </label>
+      <div class="sub">Load Case</div>
+      <button class="primary" id="addCase">+ Load Case</button>
     </div>
-    <div class="controls" style="border-bottom:none;">
-      <div class="field"><label>Factor DL</label><input type="text" inputmode="decimal" id="factorDL"></div>
-      <div class="field"><label>Factor SDL</label><input type="text" inputmode="decimal" id="factorSDL"></div>
-      <div class="field"><label>Factor LL</label><input type="text" inputmode="decimal" id="factorLL"></div>
+    <div id="caseList"></div>
+    <div class="controls" style="border-top:1px solid var(--paper-line);">
+      <div class="sub">Load Combination</div>
+      <button class="primary" id="addCombo">+ Combination</button>
     </div>
-    <div class="hint">ส่วนออกแบบเหล็กด้านล่างใช้ค่า Factored เสมอ ไม่ว่าจะติ๊กช่องนี้หรือไม่</div>
+    <div class="table-scroll" style="padding:4px 16px 10px;"><table id="comboTable"><tbody></tbody></table></div>
+    <div class="controls" style="border-top:1px solid var(--paper-line); border-bottom:none;">
+      <div class="field"><label>แสดง Reaction / SFD / BMD ของ</label><select id="viewSel" style="min-width:260px;"></select></div>
+    </div>
+    <div class="hint">ส่วนออกแบบเหล็กใช้ค่าสูงสุด/ต่ำสุด (envelope) จากทุก combination ที่ติ๊ก "ใช้ออกแบบ" · case ที่ไม่ใส่ factor ใน combination = 0 · DL / SDL / LL เป็น case หลักที่แรงอัตโนมัติใช้ จึงลบไม่ได้ · ช่องกรอกรับสูตรได้ เช่น 0.75*1.4</div>
   </div>
 
   <!-- REACTIONS -->
@@ -390,7 +395,16 @@ let state = {
     { id:2, key:'B', type:'roller', pos:4.65 }
   ],
   loads: [],
-  combo: { enabled:false, factors:{ DL:1.4, SDL:1.4, LL:1.7 } },
+  cases: [
+    { id:'DL',  name:'DL',  builtin:true, desc:'น้ำหนักคอนกรีต (อัตโนมัติ)' },
+    { id:'SDL', name:'SDL', builtin:true, desc:'น้ำหนักบรรทุกคงที่เพิ่มเติม' },
+    { id:'LL',  name:'LL',  builtin:true, desc:'น้ำหนักบรรทุกจร' }
+  ],
+  combos: [
+    { id:1, name:'U1', f:{ DL:1.4, SDL:1.4, LL:1.7 }, design:true },
+    { id:2, name:'S1', f:{ DL:1.0, SDL:1.0, LL:1.0 }, design:false }
+  ],
+  view: 'combo:1',
   design: { fc:240, fy:4000, fyT:4000, cover:2.0, db:12, dbT:10, phiB:0.90, phiV:0.85 },
   ui: { theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light' }
 };
@@ -400,7 +414,8 @@ let nextSegId = 4;
 let prevBounds = null;
 let dragTarget = null;
 let LOADS = [];       // auto + user loads, rebuilt every recompute
-let USE_F = false;    // whether effMag applies load factors
+let FACT = {};       // active factor per load case for the current analysis
+let nextCaseNo = 1, nextComboId = 3;
 
 const $ = s => document.querySelector(s);
 const stage = $('#beamStage');
@@ -494,15 +509,33 @@ function buildLoads(){
   return out.concat(state.loads);
 }
 
-function loadFactor(cat){ if (!USE_F) return 1; return state.combo.factors[cat || 'DL'] ?? 1; }
+function loadFactor(cat){ return FACT[cat || 'DL'] ?? 0; }
+function caseName(id){ const c = state.cases.find(c=>c.id===id); return c ? c.name : id; }
+function comboExpr(cb){
+  const parts = state.cases.filter(c=>cb.f[c.id]).map(c=>`${+(+cb.f[c.id]).toFixed(3)}${c.name}`);
+  return parts.length ? parts.join(' + ') : '—';
+}
+function parseView(){
+  const v = state.view || '';
+  if (v==='env') return { type:'env' };
+  if (v.startsWith('case:')){ const id = v.slice(5); if (state.cases.some(c=>c.id===id)) return { type:'case', id }; }
+  if (v.startsWith('combo:')){ const cb = state.combos.find(c=>String(c.id)===v.slice(6)); if (cb) return { type:'combo', cb }; }
+  return state.combos.length ? { type:'combo', cb:state.combos[0] } : { type:'case', id:'DL' };
+}
+function viewFactors(V){
+  if (V.type==='case') return { [V.id]:1 };
+  if (V.type==='combo') return V.cb.f;
+  return {};
+}
 function effMag(ld){ if (ld.active === false) return 0; return ld.mag * loadFactor(ld.cat); }
 function loadLabelText(ld, unit){
   const base = `${Math.abs(ld.mag).toFixed(2)}${unit}`;
   const cat = ld.cat || 'DL';
   const offSuffix = ld.active === false ? ' [ปิด]' : '';
-  if (!USE_F) return `${base} (${cat})${offSuffix}`;
+  const V = parseView();
+  if (V.type!=='combo') return `${base} (${caseName(cat)})${offSuffix}`;
   const f = loadFactor(cat);
-  return `${base}×${f} (${cat}) = ${Math.abs(effMag(ld)).toFixed(2)}${unit}${offSuffix}`;
+  return `${base}×${f} (${caseName(cat)}) = ${Math.abs(effMag(ld)).toFixed(2)}${unit}${offSuffix}`;
 }
 
 /* ============== SVG HELPER ============== */
@@ -643,11 +676,32 @@ function computeDiagrams(rr, nSteps=300){
   const all = Array.from(new Set([...xs, ...extra])).sort((a,b)=>a-b);
   return { xs:all, V:all.map(x=>shearAt(x,rr)), M:all.map(x=>momentAt(x,rr)) };
 }
-function analyze(factored){
-  USE_F = factored;
+function analyze(fmap){
+  FACT = fmap || {};
   const rr = solveReactions();
   const diag = rr.valid ? computeDiagrams(rr) : null;
   return { rr, diag };
+}
+// envelope of all design combinations (same xs for every combo: critical points do not depend on factors)
+function envelope(){
+  const list = state.combos.filter(c=>c.design);
+  if (!list.length) return { valid:false, message:'ยังไม่มี combination ที่ติ๊ก "ใช้ออกแบบ"' };
+  const res = list.map(cb=>({ cb, ...analyze(cb.f) }));
+  const bad = res.find(r=>!r.rr.valid);
+  if (bad) return { valid:false, message:bad.rr.message };
+  const xs = res[0].diag.xs, n = xs.length;
+  const E = { valid:true, xs, list:res, Mmax:[], Mmin:[], Vmax:[], Vmin:[], gMmax:[], gMmin:[], gV:[] };
+  for (let i=0;i<n;i++){
+    let mM=-Infinity, mm=Infinity, vM=-Infinity, vm=Infinity, a=null, b=null, c=null, vAbs=-1;
+    res.forEach(r=>{
+      const M=r.diag.M[i], Vv=r.diag.V[i];
+      if (M>mM){ mM=M; a=r.cb.name; } if (M<mm){ mm=M; b=r.cb.name; }
+      if (Vv>vM) vM=Vv; if (Vv<vm) vm=Vv;
+      if (Math.abs(Vv)>vAbs){ vAbs=Math.abs(Vv); c=r.cb.name; }
+    });
+    E.Mmax.push(mM); E.Mmin.push(mm); E.Vmax.push(vM); E.Vmin.push(vm); E.gMmax.push(a); E.gMmin.push(b); E.gV.push(c);
+  }
+  return E;
 }
 
 /* ============== RENDER: ELEVATION ============== */
@@ -811,7 +865,7 @@ function hatch(g, xA, xB, y){
 function drawLoad(ld, beamY, layer){
   const L = geom().L;
   const isOff = ld.active === false;
-  const baseColor = ld.cat==='LL' ? C('load') : (ld.cat==='SDL' ? C('sdl') : C('dl'));
+  const baseColor = caseColor(ld.cat || 'DL');
   const color = isOff ? C('off') : (ld.kind==='moment' ? C('shear') : baseColor);
   const op = isOff ? '0.4' : '1';
   if (ld.kind==='point'){
@@ -852,12 +906,12 @@ function drawLoad(ld, beamY, layer){
 function polar(cx,cy,r,a){ const rad=a*Math.PI/180; return {x:cx+r*Math.cos(rad), y:cy+r*Math.sin(rad)}; }
 
 /* ============== RENDER: SFD / BMD ============== */
-function renderDiagram(svg, xs, ys, color, unit){
+function renderDiagram(svg, xs, ys, color, unit, ys2){
   svg.innerHTML = '';
   const G = geom(), L = G.L;
   const W=900, H=200, marginX=70, marginTop=20, marginBottom=36;
   const plotH = H - marginTop - marginBottom;
-  const maxAbs = Math.max(1e-6, ...ys.map(v=>Math.abs(v)));
+  const maxAbs = Math.max(1e-6, ...ys.map(v=>Math.abs(v)), ...(ys2||[]).map(v=>Math.abs(v)));
   const scale = (plotH/2 - 6)/maxAbs;
   const midY = marginTop + plotH/2;
   const xS = x => marginX + (x/L)*(W-2*marginX);
@@ -868,14 +922,19 @@ function renderDiagram(svg, xs, ys, color, unit){
     el('text', {x:px,y:H-marginBottom+16,'text-anchor':'middle','font-size':'9','font-family':'JetBrains Mono, monospace',fill:C('dim')}, svg).textContent = xv.toFixed(2);
   });
   el('line', {x1:marginX,y1:midY,x2:W-marginX,y2:midY, stroke:C('ink'),'stroke-width':1.5}, svg);
-  let d = `M ${xS(xs[0])} ${yS(ys[0])}`;
-  for (let i=1;i<xs.length;i++) d += ` L ${xS(xs[i])} ${yS(ys[i])}`;
-  el('path', {d: d + ` L ${xS(xs[xs.length-1])} ${midY} L ${xS(xs[0])} ${midY} Z`, fill:color, opacity:'0.18'}, svg);
-  el('path', {d, fill:'none', stroke:color,'stroke-width':2.4,'stroke-linejoin':'round'}, svg);
+  const series = ys2 ? [ys, ys2] : [ys];
+  series.forEach((Y_, k)=>{
+    let d = `M ${xS(xs[0])} ${yS(Y_[0])}`;
+    for (let i=1;i<xs.length;i++) d += ` L ${xS(xs[i])} ${yS(Y_[i])}`;
+    el('path', {d: d + ` L ${xS(xs[xs.length-1])} ${midY} L ${xS(xs[0])} ${midY} Z`, fill:color, opacity: ys2 ? '0.12' : '0.18'}, svg);
+    el('path', {d, fill:'none', stroke:color,'stroke-width':2.4,'stroke-linejoin':'round', 'stroke-dasharray': k===1 ? '6 4' : 'none'}, svg);
+  });
+  const hi = ys, lo = ys2 || ys;
   let maxI=0, minI=0;
-  ys.forEach((v,i)=>{ if(v>ys[maxI]) maxI=i; if(v<ys[minI]) minI=i; });
-  [maxI,minI].forEach(i=>{
-    const v = ys[i]; if (Math.abs(v)<1e-3) return;
+  hi.forEach((v,i)=>{ if(v>hi[maxI]) maxI=i; });
+  lo.forEach((v,i)=>{ if(v<lo[minI]) minI=i; });
+  [[maxI,hi],[minI,lo]].forEach(([i,arr])=>{
+    const v = arr[i]; if (Math.abs(v)<1e-3) return;
     const px = xS(xs[i]), py = yS(v);
     el('circle', {cx:px,cy:py,r:3.5, fill:color}, svg);
     el('text', {x:px, y:v>=0?py-8:py+16, 'text-anchor':'middle','font-size':'10','font-family':'JetBrains Mono, monospace','font-weight':'700', fill:color}, svg).textContent = `${v.toFixed(2)} @${xs[i].toFixed(2)}`;
@@ -968,28 +1027,28 @@ function minThickness(){
 function renderDesign(){
   const sumEl = $('#designSummary'), tb = $('#designTable tbody'), cb = $('#checkTable tbody');
   sumEl.innerHTML = ''; tb.innerHTML = ''; cb.innerHTML = '';
-  const { rr, diag } = analyze(true);
-  if (!rr.valid){
-    tb.innerHTML = `<tr><td class="fail">⚠ ${rr.message}</td></tr>`;
+  const E = envelope();
+  if (!E.valid){
+    tb.innerHTML = `<tr><td class="fail">⚠ ${E.message}</td></tr>`;
     renderRebar(null);
     return;
   }
   const D = state.design;
   const rows = [];
   regions().forEach(rg=>{
-    let mPos=0, xPos=rg.a, mNeg=0, xNeg=rg.a, vMax=0;
-    diag.xs.forEach((x,i)=>{
+    let mPos=0, xPos=rg.a, mNeg=0, xNeg=rg.a, vMax=0, gPos='', gNeg='', gV='';
+    E.xs.forEach((x,i)=>{
       if (x < rg.a-1e-9 || x > rg.b+1e-9) return;
-      const M = diag.M[i], V = diag.V[i];
-      if (M > mPos){ mPos=M; xPos=x; }
-      if (M < mNeg){ mNeg=M; xNeg=x; }
-      if (Math.abs(V) > vMax) vMax = Math.abs(V);
+      if (E.Mmax[i] > mPos){ mPos=E.Mmax[i]; xPos=x; gPos=E.gMmax[i]; }
+      if (E.Mmin[i] < mNeg){ mNeg=E.Mmin[i]; xNeg=x; gNeg=E.gMmin[i]; }
+      const va = Math.max(Math.abs(E.Vmax[i]), Math.abs(E.Vmin[i]));
+      if (va > vMax){ vMax = va; gV = E.gV[i]; }
     });
     const bot = designFlexure(mPos, rg.h);
     const top = designFlexure(mNeg, rg.h);
     const tmp = designTemp(rg.h);
     const sh = shearCheck(vMax, rg.h);
-    rows.push({ rg, mPos, xPos, mNeg, xNeg, bot, top, tmp, sh });
+    rows.push({ rg, mPos, xPos, mNeg, xNeg, bot, top, tmp, sh, gPos, gNeg, gV });
   });
 
   // header table
@@ -997,7 +1056,7 @@ function renderDesign(){
   head.innerHTML = `<th>ส่วน</th><th>h (cm)</th><th>d (cm)</th><th>ตำแหน่ง</th><th>Mu (t·m)</th><th>As,req (cm²)</th><th>As,min (cm²)</th><th>เลือก</th><th>φMn (t·m)</th><th>สถานะ</th>`;
   tb.appendChild(head);
   rows.forEach(r=>{
-    [['ล่าง (+M)', r.mPos, r.xPos, r.bot], ['บน (−M)', r.mNeg, r.xNeg, r.top]].forEach(([pos, M, x, des], j)=>{
+    [['ล่าง (+M)', r.mPos, r.xPos, r.bot, r.gPos], ['บน (−M)', r.mNeg, r.xNeg, r.top, r.gNeg]].forEach(([pos, M, x, des, gov], j)=>{
       const tr = document.createElement('tr');
       const nominal = Math.abs(M) < 1e-3;
       const status = des.ok ? `<span class="pass">✓ ${des.governs}</span>` : `<span class="fail">✗ ${des.note}</span>`;
@@ -1005,7 +1064,7 @@ function renderDesign(){
         <td>${j===0 ? '<strong>'+r.rg.name+'</strong>' : ''}</td>
         <td class="num">${j===0 ? fmt(des.h,1) : ''}</td>
         <td class="num">${fmt(des.d,1)}</td>
-        <td>${pos}${nominal?'':' @'+x.toFixed(2)}</td>
+        <td>${pos}${nominal?'':' @'+x.toFixed(2)+' · '+gov}</td>
         <td class="num">${fmt(M)}</td>
         <td class="num">${isNaN(des.AsCalc)?'—':fmt(des.AsCalc)}</td>
         <td class="num">${fmt(des.AsMin)}</td>
@@ -1022,7 +1081,7 @@ function renderDesign(){
   cb.appendChild(ch);
   rows.forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>แรงเฉือน</td><td>${r.rg.name}</td><td class="num">Vu = ${fmt(r.sh.Vu)} t</td><td class="num">φVc = ${fmt(r.sh.phiVc)} t</td><td>${r.sh.ok?'<span class="pass">✓ ผ่าน</span>':'<span class="fail">✗ เพิ่มความหนา</span>'}</td>`;
+    tr.innerHTML = `<td>แรงเฉือน</td><td>${r.rg.name}</td><td class="num">Vu = ${fmt(r.sh.Vu)} t${r.gV?' ('+r.gV+')':''}</td><td class="num">φVc = ${fmt(r.sh.phiVc)} t</td><td>${r.sh.ok?'<span class="pass">✓ ผ่าน</span>':'<span class="fail">✗ เพิ่มความหนา</span>'}</td>`;
     cb.appendChild(tr);
   });
   minThickness().forEach(s=>{
@@ -1392,11 +1451,12 @@ function drawRebarView(svg, xa, xb, ctx, opt){
 }
 
 /* ============== TABLES ============== */
+function uLabel(){ const V = parseView(); return (V.type==='env' || (V.type==='combo' && V.cb.design)) ? 'u' : ''; }
 function renderReactionTable(rr){
   const tb = $('#reactionTable tbody'); tb.innerHTML = '';
   if (!rr.valid){ tb.innerHTML = `<tr><td class="fail">⚠ ${rr.message}</td></tr>`; return; }
   const B = geom().B;
-  const r = USE_F ? 'Ru' : 'R', m = USE_F ? 'Mu' : 'M';
+  const r = 'R'+uLabel(), m = 'M'+uLabel();
   const h = document.createElement('tr');
   h.innerHTML = `<th>Support</th><th>${r} ต่อ 1 m (t/m)</th><th>${r} รวม B=${B} (t)</th><th>${m} ต่อ 1 m (t·m/m)</th>`;
   tb.appendChild(h);
@@ -1411,7 +1471,7 @@ function renderSupportValuesTable(rr){
   const tb = $('#supportValuesTable tbody'); tb.innerHTML = '';
   if (!rr.valid){ tb.innerHTML = `<tr><td class="fail">⚠ ${rr.message}</td></tr>`; return; }
   const L = geom().L, eps = Math.max(L*0.0005, 1e-4);
-  const v = USE_F?'Vu':'V', m = USE_F?'Mu':'M', r = USE_F?'Ru':'R';
+  const v = 'V'+uLabel(), m = 'M'+uLabel(), r = 'R'+uLabel();
   const h = document.createElement('tr');
   h.innerHTML = `<th>Support</th><th>${v} ซ้าย (t)</th><th>${v} ขวา (t)</th><th>${r} = จาก jump (t)</th><th>${m} (t·m)</th>`;
   tb.appendChild(h);
@@ -1424,6 +1484,148 @@ function renderSupportValuesTable(rr){
     tb.appendChild(tr);
   });
 }
+
+function renderEnvelopeTables(E){
+  const rt = $('#reactionTable tbody'), st = $('#supportValuesTable tbody');
+  rt.innerHTML = ''; st.innerHTML = '';
+  if (!E.valid){ rt.innerHTML = st.innerHTML = `<tr><td class="fail">⚠ ${E.message}</td></tr>`; return; }
+  const B = geom().B, L = geom().L, eps = Math.max(L*0.0005, 1e-4);
+  const h = document.createElement('tr');
+  h.innerHTML = `<th>Support</th><th>Ru,max ต่อ 1 m (t/m)</th><th>Ru,min ต่อ 1 m (t/m)</th><th>Ru,max รวม B=${B} (t)</th><th>Mu ที่ฐาน (t·m/m)</th>`;
+  rt.appendChild(h);
+  getActiveSupports().forEach(s=>{
+    let Rx=-Infinity, Rn=Infinity, gx='', gn='', Mx=null, Mn=null;
+    E.list.forEach(r=>{
+      const x = r.rr.reactions[s.key]; if (!x) return;
+      if (x.F>Rx){ Rx=x.F; gx=r.cb.name; } if (x.F<Rn){ Rn=x.F; gn=r.cb.name; }
+      if (x.M!==undefined){ Mx = Mx===null?x.M:Math.max(Mx,x.M); Mn = Mn===null?x.M:Math.min(Mn,x.M); }
+    });
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${s.key} (${supportLabel(s.type)})</td><td class="num">${fmt(Rx)} <small>${gx}</small></td><td class="num">${fmt(Rn)} <small>${gn}</small></td><td class="num">${fmt(Rx*B)}</td><td class="num">${Mx===null?'—':fmt(Mn)+' / '+fmt(Mx)}</td>`;
+    rt.appendChild(tr);
+  });
+  const h2 = document.createElement('tr');
+  h2.innerHTML = `<th>Support</th><th>Mu,max (t·m)</th><th>Mu,min (t·m)</th><th>|Vu| สูงสุดข้าง support (t)</th>`;
+  st.appendChild(h2);
+  getActiveSupports().forEach(s=>{
+    let Mx=-Infinity, Mn=Infinity, Va=0;
+    E.list.forEach(r=>{
+      FACT = r.cb.f;
+      const M = momentAt(s.pos, r.rr); Mx=Math.max(Mx,M); Mn=Math.min(Mn,M);
+      [s.pos-eps, s.pos+eps].forEach(x=>{ if (x>0 && x<L) Va = Math.max(Va, Math.abs(shearAt(x, r.rr))); });
+    });
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${s.key} (${supportLabel(s.type)})</td><td class="num">${fmt(Mx)}</td><td class="num">${fmt(Mn)}</td><td class="num">${fmt(Va)}</td>`;
+    st.appendChild(tr);
+  });
+}
+
+/* ============== LOAD CASES & COMBINATIONS ============== */
+function renderCaseList(){
+  const box = $('#caseList');
+  if (box.contains(document.activeElement)) return;
+  box.innerHTML = '';
+  state.cases.forEach(c=>{
+    const used = LOADS.filter(l=>(l.cat||'DL')===c.id).length;
+    const row = document.createElement('div'); row.className = 'load-row seg-row';
+    row.innerHTML = `<span class="swatch" style="background:${caseColor(c.id)}"></span>
+      <input type="text" value="${c.name}" data-case="${c.id}" style="width:90px;" ${c.builtin?'disabled':''}>
+      <span class="info">${c.desc || 'case เพิ่มเอง'} · ${used} แรง</span>
+      ${c.builtin ? '<span class="autotag">หลัก</span>' : `<button class="rm danger" data-rmcase="${c.id}">ลบ</button>`}`;
+    box.appendChild(row);
+  });
+  box.querySelectorAll('input[data-case]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const c = state.cases.find(x=>x.id===e.target.dataset.case); if (!c) return;
+      const v = e.target.value.trim().slice(0,12);
+      if (!v || state.cases.some(x=>x!==c && x.name===v)){ showToast('⚠ ชื่อซ้ำหรือว่าง'); e.target.value = c.name; return; }
+      c.name = v; recompute();
+    });
+  });
+  box.querySelectorAll('[data-rmcase]').forEach(b=>{
+    b.addEventListener('click', e=>{
+      const id = e.currentTarget.dataset.rmcase;
+      if (state.loads.some(l=>l.cat===id)){ showToast('⚠ มีแรงใช้ case นี้อยู่ — เปลี่ยน case ของแรงก่อน'); return; }
+      state.cases = state.cases.filter(c=>c.id!==id);
+      state.combos.forEach(cb=>{ delete cb.f[id]; });
+      if (state.view==='case:'+id) state.view = 'combo:'+(state.combos[0]||{}).id;
+      recompute();
+    });
+  });
+}
+$('#caseList').addEventListener('focusout', e=>{ if (!e.relatedTarget || !$('#caseList').contains(e.relatedTarget)) setTimeout(renderCaseList,0); });
+$('#addCase').addEventListener('click', ()=>{
+  let id; do { id = 'C'+(nextCaseNo++); } while (state.cases.some(c=>c.id===id));
+  let name = 'W', k = 1; while (state.cases.some(c=>c.name===name)) name = 'W'+(++k);
+  state.cases.push({ id, name, builtin:false, desc:'' });
+  recompute();
+});
+function caseColor(id){
+  if (id==='LL') return C('load'); if (id==='SDL') return C('sdl'); if (id==='DL') return C('dl');
+  return C('steel');
+}
+
+function renderComboTable(){
+  const tb = $('#comboTable tbody');
+  if (tb.contains(document.activeElement)) return;
+  tb.innerHTML = '';
+  const h = document.createElement('tr');
+  h.innerHTML = `<th>ชื่อ</th>${state.cases.map(c=>`<th>${c.name}</th>`).join('')}<th>ใช้ออกแบบ</th><th>สูตร</th><th></th>`;
+  tb.appendChild(h);
+  state.combos.forEach(cb=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input class="combo-in" type="text" value="${cb.name}" data-cb="${cb.id}" data-f="name" style="width:64px;"></td>`+
+      state.cases.map(c=>`<td><input class="combo-in" type="text" inputmode="decimal" value="${cb.f[c.id] ?? ''}" placeholder="0" data-cb="${cb.id}" data-f="case:${c.id}" style="width:56px;"></td>`).join('')+
+      `<td style="text-align:center;"><input type="checkbox" data-cbd="${cb.id}" ${cb.design?'checked':''} style="width:16px;height:16px;cursor:pointer;"></td>`+
+      `<td style="font-size:0.74rem; color:var(--ink-soft);">${comboExpr(cb)}</td>`+
+      `<td><button class="rm danger" data-rmcb="${cb.id}" style="margin-left:0;">ลบ</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input[data-cb]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const cb = state.combos.find(x=>String(x.id)===e.target.dataset.cb); if (!cb) return;
+      const f = e.target.dataset.f;
+      if (f==='name'){
+        const v = e.target.value.trim().slice(0,12);
+        if (!v || state.combos.some(x=>x!==cb && x.name===v)){ showToast('⚠ ชื่อซ้ำหรือว่าง'); e.target.value = cb.name; return; }
+        cb.name = v;
+      } else {
+        const id = f.slice(5);
+        const v = e.target.value.trim()==='' ? 0 : evalMathInput(e.target.value, cb.f[id] || 0);
+        if (v) cb.f[id] = round4(v); else delete cb.f[id];
+      }
+      recompute();
+    });
+  });
+  tb.querySelectorAll('[data-cbd]').forEach(chk=>{
+    chk.addEventListener('change', e=>{ const cb = state.combos.find(x=>String(x.id)===e.target.dataset.cbd); if (cb){ cb.design = e.target.checked; recompute(); } });
+  });
+  tb.querySelectorAll('[data-rmcb]').forEach(b=>{
+    b.addEventListener('click', e=>{
+      const id = e.currentTarget.dataset.rmcb;
+      state.combos = state.combos.filter(c=>String(c.id)!==id);
+      if (state.view==='combo:'+id) state.view = state.combos.length ? 'combo:'+state.combos[0].id : 'case:DL';
+      recompute();
+    });
+  });
+}
+$('#comboTable').addEventListener('focusout', e=>{ if (!e.relatedTarget || !$('#comboTable').contains(e.relatedTarget)) setTimeout(renderComboTable,0); });
+$('#addCombo').addEventListener('click', ()=>{
+  let k = state.combos.length + 1, name = 'U'+k; while (state.combos.some(c=>c.name===name)) name = 'U'+(++k);
+  state.combos.push({ id:nextComboId++, name, f:{ DL:1.4, SDL:1.4, LL:1.7 }, design:true });
+  recompute();
+});
+function renderViewSel(){
+  const sel = $('#viewSel');
+  const opts = [];
+  state.combos.forEach(cb=>opts.push([`combo:${cb.id}`, `Combination ${cb.name} = ${comboExpr(cb)}${cb.design?'  (ออกแบบ)':''}`]));
+  opts.push(['env', 'Envelope — ทุก combination ที่ใช้ออกแบบ']);
+  state.cases.forEach(c=>opts.push([`case:${c.id}`, `Load Case ${c.name} (ไม่คูณ factor)`]));
+  sel.innerHTML = opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+  const V = parseView();
+  sel.value = V.type==='env' ? 'env' : V.type==='case' ? 'case:'+V.id : 'combo:'+V.cb.id;
+}
+$('#viewSel').addEventListener('change', e=>{ state.view = e.target.value; recompute(); });
 
 /* ============== LISTS ============== */
 function renderSupportList(){
@@ -1605,7 +1807,7 @@ function renderLoadList(){
     if (ld.kind==='point') f = `Point @ <input type="text" inputmode="decimal" value="${ld.pos}" data-id="${ld.id}" data-field="pos" style="width:64px;"> m &nbsp; P=<input type="text" inputmode="decimal" value="${ld.mag}" data-id="${ld.id}" data-field="mag" style="width:64px;"> t/m`;
     else if (ld.kind==='udl') f = `UDL <input type="text" inputmode="decimal" value="${ld.start}" data-id="${ld.id}" data-field="start" style="width:56px;">→<input type="text" inputmode="decimal" value="${ld.end}" data-id="${ld.id}" data-field="end" style="width:56px;"> m &nbsp; w=<input type="text" inputmode="decimal" value="${ld.mag}" data-id="${ld.id}" data-field="mag" style="width:56px;"> t/m²`;
     else f = `Moment @ <input type="text" inputmode="decimal" value="${ld.pos}" data-id="${ld.id}" data-field="pos" style="width:64px;"> m &nbsp; M=<input type="text" inputmode="decimal" value="${ld.mag}" data-id="${ld.id}" data-field="mag" style="width:64px;"> t·m/m`;
-    const cats = ['DL','SDL','LL'].map(c=>`<option value="${c}" ${(ld.cat||'DL')===c?'selected':''}>${c}</option>`).join('');
+    const cats = state.cases.map(c=>`<option value="${c.id}" ${(ld.cat||'DL')===c.id?'selected':''}>${c.name}</option>`).join('');
     row.innerHTML = `<span class="swatch" style="background:${color}"></span>
       <button data-toggle-active="${ld.id}" style="width:30px; padding:4px 0;" title="${on?'ปิดใช้งานแรงนี้ (ไม่ลบ)':'เปิดใช้งานแรงนี้'}">${on?'👁':'🚫'}</button>
       <select data-id="${ld.id}" data-field="cat">${cats}</select>${f}
@@ -1633,14 +1835,12 @@ function renderLoadList(){
 const BIND = [
   ['#gB', ()=>state, 'B'],
   ['#lGamma', ()=>state.area, 'gamma'],
-  ['#factorDL', ()=>state.combo.factors, 'DL'], ['#factorSDL', ()=>state.combo.factors, 'SDL'], ['#factorLL', ()=>state.combo.factors, 'LL'],
   ['#dFc', ()=>state.design, 'fc'], ['#dFy', ()=>state.design, 'fy'], ['#dFyT', ()=>state.design, 'fyT'],
   ['#dCover', ()=>state.design, 'cover'], ['#dPhiB', ()=>state.design, 'phiB'], ['#dPhiV', ()=>state.design, 'phiV'],
 ];
 const LIMITS = { R:[0.05,0.5], T:[0.1,1], n:[2,60], t:[0.05,1], B:[0.3,10], L:[0,20] };
 function syncInputs(){
   BIND.forEach(([sel,obj,key])=>{ $(sel).value = obj()[key]; });
-  $('#comboEnabled').checked = state.combo.enabled;
   $('#dDb').value = state.design.db; $('#dDbT').value = state.design.dbT;
 }
 BIND.forEach(([sel,obj,key])=>{
@@ -1659,7 +1859,6 @@ BIND.forEach(([sel,obj,key])=>{
   s.innerHTML = BARS.map(d=>`<option value="${d}">${barName(d)}</option>`).join('');
   s.addEventListener('change', ()=>{ state.design[i===0?'db':'dbT'] = parseInt(s.value); recompute(); });
 });
-$('#comboEnabled').addEventListener('change', e=>{ state.combo.enabled = e.target.checked; recompute(); });
 
 $('#addSupport').addEventListener('click', ()=>{
   const L = geom().L, used = state.supports.map(s=>s.pos);
@@ -1739,25 +1938,40 @@ function recompute(){
   $('#cNF').textContent = `${G.nFlights}`;
   if (!(document.activeElement && document.activeElement.dataset && document.activeElement.dataset.seg)) renderSegList();
 
-  // display analysis (factored or service per toggle)
-  const disp = analyze(state.combo.enabled);
-  renderReactionTable(disp.rr);
-  renderSupportValuesTable(disp.rr);
-  if (disp.rr.valid){
-    renderDiagram(sfdSvg, disp.diag.xs, disp.diag.V, C('shear'), state.combo.enabled ? 'Vu (t/m)' : 'V (t/m)');
-    renderDiagram(bmdSvg, disp.diag.xs, disp.diag.M, C('moment'), state.combo.enabled ? 'Mu (t·m/m)' : 'M (t·m/m)');
-    const vL = state.combo.enabled?'Vu':'V', mL = state.combo.enabled?'Mu':'M';
-    $('#maxShear').textContent = `max |${vL}| = ${Math.max(...disp.diag.V.map(Math.abs)).toFixed(2)} t`;
-    $('#maxMoment').textContent = `max |${mL}| = ${Math.max(...disp.diag.M.map(Math.abs)).toFixed(2)} t·m`;
+  // display analysis: one load case, one combination, or the design envelope
+  const V = parseView(), u = uLabel(), vL = 'V'+u, mL = 'M'+u;
+  const tag = V.type==='env' ? 'Envelope' : V.type==='case' ? 'Case '+caseName(V.id) : V.cb.name;
+  let okDisp = false;
+  if (V.type==='env'){
+    const E = envelope();
+    renderEnvelopeTables(E);
+    if (E.valid){
+      okDisp = true;
+      renderDiagram(sfdSvg, E.xs, E.Vmax, C('shear'), `${vL} (t/m) · ${tag}`, E.Vmin);
+      renderDiagram(bmdSvg, E.xs, E.Mmax, C('moment'), `${mL} (t·m/m) · ${tag}`, E.Mmin);
+      $('#maxShear').textContent = `max |${vL}| = ${Math.max(...E.Vmax.map(Math.abs), ...E.Vmin.map(Math.abs)).toFixed(2)} t · ${tag}`;
+      $('#maxMoment').textContent = `max |${mL}| = ${Math.max(...E.Mmax.map(Math.abs), ...E.Mmin.map(Math.abs)).toFixed(2)} t·m · ${tag}`;
+    }
   } else {
-    sfdSvg.innerHTML = ''; bmdSvg.innerHTML = '';
-    $('#maxShear').textContent = ''; $('#maxMoment').textContent = '';
+    const disp = analyze(viewFactors(V));
+    renderReactionTable(disp.rr);
+    renderSupportValuesTable(disp.rr);
+    if (disp.rr.valid){
+      okDisp = true;
+      renderDiagram(sfdSvg, disp.diag.xs, disp.diag.V, C('shear'), `${vL} (t/m) · ${tag}`);
+      renderDiagram(bmdSvg, disp.diag.xs, disp.diag.M, C('moment'), `${mL} (t·m/m) · ${tag}`);
+      $('#maxShear').textContent = `max |${vL}| = ${Math.max(...disp.diag.V.map(Math.abs)).toFixed(2)} t · ${tag}`;
+      $('#maxMoment').textContent = `max |${mL}| = ${Math.max(...disp.diag.M.map(Math.abs)).toFixed(2)} t·m · ${tag}`;
+    }
   }
-  renderStage();
+  if (!okDisp){ sfdSvg.innerHTML = ''; bmdSvg.innerHTML = ''; $('#maxShear').textContent = ''; $('#maxMoment').textContent = ''; }
   renderElevation();
-  renderDesign();          // always factored
-  USE_F = state.combo.enabled; // restore for labels drawn later
+  renderDesign();          // envelope of design combinations
+  FACT = viewFactors(V);   // restore for load labels drawn on the model
   renderStage();
+  renderCaseList();
+  renderComboTable();
+  renderViewSel();
   renderAutoLoadList();
   renderSdlLlList();
   if (!dragTarget){ renderLoadList(); renderSupportList(); }
@@ -1849,7 +2063,6 @@ if (window.__SAVED_STATE__){
     state = { ...d, ...r,
       area:{...d.area, ...(r.area||{})},
       autoActive:{...d.autoActive, ...(r.autoActive||{})},
-      combo:{ ...d.combo, ...(r.combo||{}), factors:{...d.combo.factors, ...((r.combo||{}).factors||{})} },
       design:{...d.design, ...(r.design||{})}, ui:{...d.ui, ...(r.ui||{})} };
     if (r.geo && !r.segs){ // migrate single-flight save
       const g = r.geo; state.B = g.B ?? d.B;
@@ -1866,6 +2079,15 @@ if (window.__SAVED_STATE__){
       if (sg.ll === undefined) sg.ll = oA.ll !== undefined ? oA.ll : 0;
     });
     state.area = { gamma: oA.gamma ?? d.area.gamma };
+    if (!r.combos && r.combo){ // older saves: one factor set + "show factored" toggle
+      const f = { DL:1.4, SDL:1.4, LL:1.7, ...(r.combo.factors||{}) };
+      state.combos = [{ id:1, name:'U1', f, design:true }, { id:2, name:'S1', f:{ DL:1, SDL:1, LL:1 }, design:false }];
+      state.view = r.combo.enabled ? 'combo:1' : 'combo:2';
+    }
+    delete state.combo;
+    if (!r.cases) state.cases = d.cases;
+    nextComboId = Math.max(0, ...state.combos.map(c=>c.id)) + 1;
+    nextCaseNo = state.cases.filter(c=>/^C\d+$/.test(c.id)).reduce((m,c)=>Math.max(m, +c.id.slice(1)), 0) + 1;
     nextSegId = Math.max(...state.segs.map(s=>s.id)) + 1;
     nextId = (state.loads.length ? Math.max(...state.loads.map(l=>l.id)) : 0) + 1;
     nextSupportId = (state.supports.length ? Math.max(...state.supports.map(s=>s.id)) : 0) + 1;
