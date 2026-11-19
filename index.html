@@ -460,13 +460,19 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.6.2';
 const APP_DATE = '2026-11-19';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
 document.title = `Stair — บันไดพับผ้าพาดทางยาว (v${APP_VERSION})`;
 
 /* ============== HELPERS ============== */
+// true only while the user is typing in a text field inside el (a focused button or checkbox does not count),
+// so lists re-render right after a click on their own buttons
+function isTypingIn(el){
+  const a = document.activeElement;
+  return !!(a && el.contains(a) && a.tagName === 'INPUT' && (a.type === 'text' || a.type === ''));
+}
 const _cssCache = {};
 function C(name){
   if (!(name in _cssCache)) _cssCache[name] = getComputedStyle(document.documentElement).getPropertyValue('--'+name).trim() || '#888';
@@ -1696,7 +1702,7 @@ function renderEnvelopeTables(E){
 /* ============== LOAD CASES & COMBINATIONS ============== */
 function renderCaseList(){
   const box = $('#caseList');
-  if (box.contains(document.activeElement)) return;
+  if (isTypingIn(box)) return;
   box.innerHTML = '';
   state.cases.forEach(c=>{
     const used = LOADS.filter(l=>(l.cat||'DL')===c.id).length;
@@ -1740,7 +1746,7 @@ function caseColor(id){
 
 function renderComboTable(){
   const tb = $('#comboTable tbody');
-  if (tb.contains(document.activeElement)) return;
+  if (isTypingIn(tb)) return;
   tb.innerHTML = '';
   const h = document.createElement('tr');
   h.innerHTML = `<th>ชื่อ</th>${state.cases.map(c=>`<th>${c.name}</th>`).join('')}<th>ใช้ออกแบบ</th><th>สูตร</th><th></th>`;
@@ -1927,7 +1933,7 @@ function renderAutoLoadList(){
 }
 function renderSdlLlList(){
   const box = $('#sdlLlList');
-  if (box.contains(document.activeElement)) return;
+  if (isTypingIn(box)) return;
   box.innerHTML = '';
   const G = geom();
   G.segs.filter(s=>s.len > 1e-6).forEach(s=>{
