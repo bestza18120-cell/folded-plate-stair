@@ -342,6 +342,27 @@
     </div></div>
   </div>
 
+  <!-- DEFLECTION -->
+  <div class="panel">
+    <div class="panel-head"><h2>ตรวจการแอ่นตัว (ACI 318-19 · ต่อ 1 m กว้าง) <span id="maxDefl" class="max-badge moment"></span></h2></div>
+    <div class="controls">
+      <div class="field"><label style="text-transform:none;">ξ ระยะยาว (≥ 5 ปี = 2.0)</label><input type="text" inputmode="decimal" id="dfXi"></div>
+      <div class="field"><label>LL ที่คงค้าง (%)</label><input type="text" inputmode="decimal" id="dfSus"></div>
+      <div class="field"><label>เกณฑ์ LL ทันที</label><select id="dfLimLL"><option value="360">L/360</option><option value="180">L/180</option></select></div>
+      <div class="field"><label>เกณฑ์ระยะยาว + LL</label><select id="dfLim"><option value="240">L/240 (ไม่มีส่วนที่เสียหายง่าย)</option><option value="480">L/480 (มีส่วนที่เสียหายง่าย)</option></select></div>
+    </div>
+    <div class="panel-body"><div class="diagram-wrap">
+      <svg id="deflSvg" viewBox="0 0 900 200" preserveAspectRatio="xMidYMid meet" style="width:100%; height:auto;"></svg>
+    </div></div>
+    <div class="panel-body table-scroll" style="padding-top:0;"><table id="deflTable"><tbody></tbody></table></div>
+    <div class="hint">
+      น้ำหนักใช้งาน: D = DL + SDL, L = LL (case อื่นไม่รวม) · Ec = 15,100√f'c · Es = 2.04×10⁶ ksc · fr = 2.0√f'c · Ig, Icr ต่อแถบ 1 m จากเหล็กที่เลือกในส่วนออกแบบ (ไม่คิดเหล็กรับแรงอัดใน Icr)<br>
+      Ie = Icr / (1 − ((⅔)Mcr/Ma)²(1 − Icr/Ig)) เมื่อ Ma &gt; ⅔Mcr, ไม่งั้น Ie = Ig (ACI 318-19 ตาราง 24.2.3.5) · คิด Ie ต่อช่วงจาก Ma สูงสุดในช่วงนั้น แล้ววิเคราะห์ด้วย EI ต่างกันรายช่วง<br>
+      ΔL = Δ(D+L) − Δ(D) · ระยะยาว: λΔ = ξ/(1 + 50ρ′) คูณ Δ ของน้ำหนักคงค้าง (D + %LL) · ตรวจ: ΔL ≤ L/360 และ λΔ·Δคงค้าง + ΔL ≤ L/240 หรือ L/480 (ACI 318-19 ตาราง 24.2.2)<br>
+      กราฟ: เส้นทึบ = Δ ทันทีจาก D+L · เส้นประ = Δ ระยะยาว + LL (ค่าลบ = แอ่นลง) · ช่วงยื่นใช้ L = ความยาวยื่น
+    </div>
+  </div>
+
   <!-- DESIGN -->
   <div class="panel">
     <div class="panel-head"><h2>ออกแบบเหล็กเสริม (SDM · ต่อ 1 m กว้าง)</h2></div>
@@ -384,27 +405,6 @@
       d = h − covering − db/2 · ใช้ความหนาแผ่นพับ t เป็นหน้าตัดออกแบบของช่วงบันได (แบบอนุรักษ์) · As,min = 0.0025bh (fy &lt; 4000) / 0.0018bh (fy = 4000) / 0.0018·(4000/fy)·bh ≥ 0.0014bh (fy &gt; 4000) · s,max เหล็กหลัก = min(3h, 45 cm), เหล็กกระจาย = min(5h, 45 cm) · ระยะเรียงปัดลงทีละ 2.5 cm<br>
       φVc = φ·0.53√f'c·b·d (ใช้ |Vu| สูงสุดในช่วง ไม่ลดค่าที่ระยะ d) · ความหนาต่ำสุดตาม ACI ใช้ช่วงราบระหว่าง support (L/20 ช่วงเดี่ยว, L/24 ปลายต่อเนื่องหนึ่งข้าง, L/28 ต่อเนื่องสองข้าง, L/10 ยื่น) × (0.4 + fy/7000) เป็นค่าตรวจเบื้องต้นเท่านั้น<br>
       ⚠ Detail พับผ้า: ที่มุมพับด้านใน (re-entrant corner) เหล็กรับแรงดึงห้ามดัดอ้อมมุมด้านใน เพราะจะดึงจนคอนกรีตหุ้มระเบิดออก ให้ใช้เหล็กไขว้ผ่านมุมแล้วฝังยึดเลยมุมอย่างน้อยระยะฝัง ld
-    </div>
-  </div>
-
-  <!-- DEFLECTION -->
-  <div class="panel">
-    <div class="panel-head"><h2>ตรวจการแอ่นตัว (ACI 318-19 · ต่อ 1 m กว้าง) <span id="maxDefl" class="max-badge moment"></span></h2></div>
-    <div class="controls">
-      <div class="field"><label style="text-transform:none;">ξ ระยะยาว (≥ 5 ปี = 2.0)</label><input type="text" inputmode="decimal" id="dfXi"></div>
-      <div class="field"><label>LL ที่คงค้าง (%)</label><input type="text" inputmode="decimal" id="dfSus"></div>
-      <div class="field"><label>เกณฑ์ LL ทันที</label><select id="dfLimLL"><option value="360">L/360</option><option value="180">L/180</option></select></div>
-      <div class="field"><label>เกณฑ์ระยะยาว + LL</label><select id="dfLim"><option value="240">L/240 (ไม่มีส่วนที่เสียหายง่าย)</option><option value="480">L/480 (มีส่วนที่เสียหายง่าย)</option></select></div>
-    </div>
-    <div class="panel-body"><div class="diagram-wrap">
-      <svg id="deflSvg" viewBox="0 0 900 200" preserveAspectRatio="xMidYMid meet" style="width:100%; height:auto;"></svg>
-    </div></div>
-    <div class="panel-body table-scroll" style="padding-top:0;"><table id="deflTable"><tbody></tbody></table></div>
-    <div class="hint">
-      น้ำหนักใช้งาน: D = DL + SDL, L = LL (case อื่นไม่รวม) · Ec = 15,100√f'c · Es = 2.04×10⁶ ksc · fr = 2.0√f'c · Ig, Icr ต่อแถบ 1 m จากเหล็กที่เลือกในส่วนออกแบบ (ไม่คิดเหล็กรับแรงอัดใน Icr)<br>
-      Ie = Icr / (1 − ((⅔)Mcr/Ma)²(1 − Icr/Ig)) เมื่อ Ma &gt; ⅔Mcr, ไม่งั้น Ie = Ig (ACI 318-19 ตาราง 24.2.3.5) · คิด Ie ต่อช่วงจาก Ma สูงสุดในช่วงนั้น แล้ววิเคราะห์ด้วย EI ต่างกันรายช่วง<br>
-      ΔL = Δ(D+L) − Δ(D) · ระยะยาว: λΔ = ξ/(1 + 50ρ′) คูณ Δ ของน้ำหนักคงค้าง (D + %LL) · ตรวจ: ΔL ≤ L/360 และ λΔ·Δคงค้าง + ΔL ≤ L/240 หรือ L/480 (ACI 318-19 ตาราง 24.2.2)<br>
-      กราฟ: เส้นทึบ = Δ ทันทีจาก D+L · เส้นประ = Δ ระยะยาว + LL (ค่าลบ = แอ่นลง) · ช่วงยื่นใช้ L = ความยาวยื่น
     </div>
   </div>
 
@@ -460,7 +460,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 const APP_DATE = '2026-11-19';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
