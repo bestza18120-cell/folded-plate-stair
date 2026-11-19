@@ -303,7 +303,7 @@
     </div>
     <div class="table-scroll" style="padding:4px 16px 10px;"><table id="comboTable"><tbody></tbody></table></div>
     <div class="controls" style="border-top:1px solid var(--paper-line); border-bottom:none;">
-      <div class="field"><label>แสดง Reaction / SFD / BMD ของ</label><select id="viewSel" style="min-width:260px;"></select></div>
+      <div class="field"><label>แสดง Reactions / Shear &amp; Moment ที่ support ของ</label><select id="viewSel" style="min-width:260px;"></select></div>
     </div>
     <div class="hint">ส่วนออกแบบเหล็กใช้ค่าสูงสุด/ต่ำสุด (envelope) จากทุก combination ที่ติ๊ก "ใช้ออกแบบ" · case ที่ไม่ใส่ factor ใน combination = 0 · DL / SDL / LL เป็น case หลักที่แรงอัตโนมัติใช้ จึงลบไม่ได้ · ช่องกรอกรับสูตรได้ เช่น 0.75*1.4</div>
   </div>
@@ -329,6 +329,7 @@
   <!-- SFD -->
   <div class="panel">
     <div class="panel-head"><h2>Shear Force Diagram (SFD) <span id="maxShear" class="max-badge shear"></span></h2></div>
+    <div class="controls"><div class="field"><label>Combination ที่แสดง</label><select id="viewSelV" style="min-width:260px;"></select></div></div>
     <div class="panel-body"><div class="diagram-wrap">
       <svg id="sfdSvg" viewBox="0 0 900 200" preserveAspectRatio="xMidYMid meet" style="width:100%; height:auto;"></svg>
     </div></div>
@@ -337,6 +338,7 @@
   <!-- BMD -->
   <div class="panel">
     <div class="panel-head"><h2>Bending Moment Diagram (BMD) <span id="maxMoment" class="max-badge moment"></span></h2></div>
+    <div class="controls"><div class="field"><label>Combination ที่แสดง</label><select id="viewSelM" style="min-width:260px;"></select></div></div>
     <div class="panel-body"><div class="diagram-wrap">
       <svg id="bmdSvg" viewBox="0 0 900 200" preserveAspectRatio="xMidYMid meet" style="width:100%; height:auto;"></svg>
     </div></div>
@@ -346,6 +348,7 @@
   <div class="panel">
     <div class="panel-head"><h2>ตรวจการแอ่นตัว (ACI 318-19 · ต่อ 1 m กว้าง) <span id="maxDefl" class="max-badge moment"></span></h2></div>
     <div class="controls">
+      <div class="field"><label>น้ำหนักใช้งานที่ใช้ตรวจ</label><select id="viewSelD" style="min-width:240px;"></select></div>
       <div class="field"><label style="text-transform:none;">ξ ระยะยาว (≥ 5 ปี = 2.0)</label><input type="text" inputmode="decimal" id="dfXi"></div>
       <div class="field"><label>LL ที่คงค้าง (%)</label><input type="text" inputmode="decimal" id="dfSus"></div>
       <div class="field"><label>เกณฑ์ LL ทันที</label><select id="dfLimLL"><option value="360">L/360</option><option value="180">L/180</option></select></div>
@@ -356,7 +359,7 @@
     </div></div>
     <div class="panel-body table-scroll" style="padding-top:0;"><table id="deflTable"><tbody></tbody></table></div>
     <div class="hint">
-      น้ำหนักใช้งาน: D = DL + SDL, L = LL (case อื่นไม่รวม) · Ec = 15,100√f'c · Es = 2.04×10⁶ ksc · fr = 2.0√f'c · Ig, Icr ต่อแถบ 1 m จากเหล็กที่เลือกในส่วนออกแบบ (ไม่คิดเหล็กรับแรงอัดใน Icr)<br>
+      น้ำหนักใช้งาน = combination ที่เลือก (ควรใช้ค่าไม่คูณ factor) · ส่วนคงที่ D = combination เดียวกันโดยไม่รวม LL · ΔL มาจาก LL · Ec = 15,100√f'c · Es = 2.04×10⁶ ksc · fr = 2.0√f'c · Ig, Icr ต่อแถบ 1 m จากเหล็กที่เลือกในส่วนออกแบบ (ไม่คิดเหล็กรับแรงอัดใน Icr)<br>
       Ie = Icr / (1 − ((⅔)Mcr/Ma)²(1 − Icr/Ig)) เมื่อ Ma &gt; ⅔Mcr, ไม่งั้น Ie = Ig (ACI 318-19 ตาราง 24.2.3.5) · คิด Ie ต่อช่วงจาก Ma สูงสุดในช่วงนั้น แล้ววิเคราะห์ด้วย EI ต่างกันรายช่วง<br>
       ΔL = Δ(D+L) − Δ(D) · ระยะยาว: λΔ = ξ/(1 + 50ρ′) คูณ Δ ของน้ำหนักคงค้าง (D + %LL) · ตรวจ: ΔL ≤ L/360 และ λΔ·Δคงค้าง + ΔL ≤ L/240 หรือ L/480 (ACI 318-19 ตาราง 24.2.2)<br>
       กราฟ: เส้นทึบ = Δ ทันทีจาก D+L · เส้นประ = Δ ระยะยาว + LL (ค่าลบ = แอ่นลง) · ช่วงยื่นใช้ L = ความยาวยื่น
@@ -438,6 +441,9 @@ let state = {
     { id:2, name:'S1', f:{ DL:1.0, SDL:1.0, LL:1.0 }, design:false }
   ],
   view: 'combo:1',
+  viewV: 'combo:1',
+  viewM: 'combo:1',
+  viewD: 'svc',
   design: { fc:240, fy:4000, fyT:4000, cover:2.0, db:12, dbT:10, phiB:0.90, phiV:0.85 },
   defl: { xi:2.0, sus:0, limLong:240, limLL:360 },
   geomVer: 2,
@@ -460,7 +466,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.6.2';
+const APP_VERSION = '1.7.0';
 const APP_DATE = '2026-11-19';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
@@ -566,8 +572,8 @@ function comboExpr(cb){
   const parts = state.cases.filter(c=>cb.f[c.id]).map(c=>`${+(+cb.f[c.id]).toFixed(3)}${c.name}`);
   return parts.length ? parts.join(' + ') : '—';
 }
-function parseView(){
-  const v = state.view || '';
+function parseView(v){
+  v = v === undefined ? (state.view || '') : (v || '');
   if (v==='env') return { type:'env' };
   if (v.startsWith('case:')){ const id = v.slice(5); if (state.cases.some(c=>c.id===id)) return { type:'case', id }; }
   if (v.startsWith('combo:')){ const cb = state.combos.find(c=>String(c.id)===v.slice(6)); if (cb) return { type:'combo', cb }; }
@@ -1254,8 +1260,10 @@ function renderDeflection(rows){
   const P = state.defl, spans = minThickness();
   if (!spans.length) return;
   const susF = clamp((P.sus||0)/100, 0, 1);
-  const Dc = deflectionCase({ DL:1, SDL:1 }, spans, rows);
-  const Tc = deflectionCase({ DL:1, SDL:1, LL:1 }, spans, rows);
+  const DF = deflFactors();
+  const fDead = { ...DF.f }; delete fDead.LL;
+  const Dc = deflectionCase(fDead, spans, rows);
+  const Tc = deflectionCase(DF.f, spans, rows);
   if (!Dc || !Tc){ tb.innerHTML = `<tr><td class="fail">⚠ วิเคราะห์ไม่ได้</td></tr>`; return; }
   const xs = Tc.xs;
   const dD = Dc.delta, dT = Tc.delta, dL = dT.map((v,i)=>v - dD[i]);
@@ -1263,7 +1271,7 @@ function renderDeflection(rows){
   const dLT = xs.map((x,i)=> lamOf(x)*(dD[i] + susF*dL[i]) + dL[i]);
 
   const h = document.createElement('tr');
-  h.innerHTML = `<th>ช่วง</th><th>Ma D+L (t·m)</th><th>Mcr (t·m)</th><th>Ig / Icr / Ie (cm⁴)</th><th>λΔ</th><th>Δ ทันที D+L (mm)</th><th>ΔL (mm)</th><th>ระยะยาว + LL (mm)</th><th>สถานะ</th>`;
+  h.innerHTML = `<th>ช่วง</th><th>Ma ${DF.name} (t·m)</th><th>Mcr (t·m)</th><th>Ig / Icr / Ie (cm⁴)</th><th>λΔ</th><th>Δ ทันที ${DF.name} (mm)</th><th>ΔL (mm)</th><th>ระยะยาว + LL (mm)</th><th>สถานะ</th>`;
   tb.appendChild(h);
   let allOk = true, worst = 0;
   Tc.info.forEach(s=>{
@@ -1283,8 +1291,8 @@ function renderDeflection(rows){
       <td>${ok ? '<span class="pass">✓ ผ่าน</span>' : '<span class="fail">✗ ไม่ผ่าน</span>'}</td>`;
     tb.appendChild(tr);
   });
-  renderDiagram(svg, xs, dT.map(v=>-v), C('moment'), 'Δ (mm) · ทึบ = ทันที D+L · ประ = ระยะยาว + LL', dLT.map(v=>-v));
-  if (svg.__hd) svg.__hd.labels = ['ทันที D+L', 'ระยะยาว+LL'];
+  renderDiagram(svg, xs, dT.map(v=>-v), C('moment'), `Δ (mm) · ${DF.name} · ทึบ = ทันที · ประ = ระยะยาว + LL`, dLT.map(v=>-v));
+  if (svg.__hd) svg.__hd.labels = ['ทันที', 'ระยะยาว+LL'];
   $('#maxDefl').textContent = `ระยะยาว + LL สูงสุด ${worst.toFixed(1)} mm ${allOk ? '✓' : '✗'}`;
 }
 
@@ -1630,7 +1638,7 @@ function drawRebarView(svg, xa, xb, ctx, opt){
 }
 
 /* ============== TABLES ============== */
-function uLabel(){ const V = parseView(); return (V.type==='env' || (V.type==='combo' && V.cb.design)) ? 'u' : ''; }
+function uLabel(v){ const V = parseView(v); return (V.type==='env' || (V.type==='combo' && V.cb.design)) ? 'u' : ''; }
 function renderReactionTable(rr){
   const tb = $('#reactionTable tbody'); tb.innerHTML = '';
   if (!rr.valid){ tb.innerHTML = `<tr><td class="fail">⚠ ${rr.message}</td></tr>`; return; }
@@ -1727,7 +1735,7 @@ function renderCaseList(){
       if (state.loads.some(l=>l.cat===id)){ showToast('⚠ มีแรงใช้ case นี้อยู่ — เปลี่ยน case ของแรงก่อน'); return; }
       state.cases = state.cases.filter(c=>c.id!==id);
       state.combos.forEach(cb=>{ delete cb.f[id]; });
-      if (state.view==='case:'+id) state.view = 'combo:'+(state.combos[0]||{}).id;
+      ['view','viewV','viewM'].forEach(k=>{ if (state[k]==='case:'+id) state[k] = 'combo:'+(state.combos[0]||{}).id; });
       recompute();
     });
   });
@@ -1783,7 +1791,8 @@ function renderComboTable(){
     b.addEventListener('click', e=>{
       const id = e.currentTarget.dataset.rmcb;
       state.combos = state.combos.filter(c=>String(c.id)!==id);
-      if (state.view==='combo:'+id) state.view = state.combos.length ? 'combo:'+state.combos[0].id : 'case:DL';
+      ['view','viewV','viewM'].forEach(k=>{ if (state[k]==='combo:'+id) state[k] = state.combos.length ? 'combo:'+state.combos[0].id : 'case:DL'; });
+      if (state.viewD==='combo:'+id) state.viewD = 'svc';
       recompute();
     });
   });
@@ -1800,11 +1809,24 @@ function renderViewSel(){
   state.combos.forEach(cb=>opts.push([`combo:${cb.id}`, `Combination ${cb.name} = ${comboExpr(cb)}${cb.design?'  (ออกแบบ)':''}`]));
   opts.push(['env', 'Envelope — ทุก combination ที่ใช้ออกแบบ']);
   state.cases.forEach(c=>opts.push([`case:${c.id}`, `Load Case ${c.name} (ไม่คูณ factor)`]));
-  sel.innerHTML = opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
-  const V = parseView();
-  sel.value = V.type==='env' ? 'env' : V.type==='case' ? 'case:'+V.id : 'combo:'+V.cb.id;
+  const html = opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+  const valOf = vs=>{ const V = parseView(vs); return V.type==='env' ? 'env' : V.type==='case' ? 'case:'+V.id : 'combo:'+V.cb.id; };
+  [['#viewSel','view'], ['#viewSelV','viewV'], ['#viewSelM','viewM']].forEach(([q,k])=>{
+    const el_ = $(q); el_.innerHTML = html; el_.value = valOf(state[k]);
+  });
+  const sd = $('#viewSelD');
+  sd.innerHTML = `<option value="svc">ใช้งาน 1.0DL + 1.0SDL + 1.0LL</option>` +
+    state.combos.map(cb=>`<option value="combo:${cb.id}">Combination ${cb.name} = ${comboExpr(cb)}${cb.design?'  (ออกแบบ — มี factor)':''}</option>`).join('');
+  sd.value = state.combos.some(cb=>'combo:'+cb.id===state.viewD) ? state.viewD : 'svc';
 }
 $('#viewSel').addEventListener('change', e=>{ state.view = e.target.value; recompute(); });
+$('#viewSelV').addEventListener('change', e=>{ state.viewV = e.target.value; recompute(); });
+$('#viewSelM').addEventListener('change', e=>{ state.viewM = e.target.value; recompute(); });
+$('#viewSelD').addEventListener('change', e=>{ state.viewD = e.target.value; recompute(); });
+function deflFactors(){
+  const cb = state.combos.find(c=>'combo:'+c.id===state.viewD);
+  return cb ? { f:cb.f, name:cb.name } : { f:{ DL:1, SDL:1, LL:1 }, name:'D+L' };
+}
 
 /* ============== LISTS ============== */
 function renderSupportList(){
@@ -2119,33 +2141,39 @@ function recompute(){
   $('#cNF').textContent = `${G.nFlights}`;
   if (!(document.activeElement && document.activeElement.dataset && document.activeElement.dataset.seg)) renderSegList();
 
-  // display analysis: one load case, one combination, or the design envelope
-  const V = parseView(), u = uLabel(), vL = 'V'+u, mL = 'M'+u;
-  const tag = V.type==='env' ? 'Envelope' : V.type==='case' ? 'Case '+caseName(V.id) : V.cb.name;
-  let okDisp = false;
-  if (V.type==='env'){
-    const E = envelope();
-    renderEnvelopeTables(E);
-    if (E.valid){
-      okDisp = true;
-      renderDiagram(sfdSvg, E.xs, E.Vmax, C('shear'), `${vL} (t/m) · ${tag}`, E.Vmin);
-      renderDiagram(bmdSvg, E.xs, E.Mmax, C('moment'), `${mL} (t·m/m) · ${tag}`, E.Mmin);
-      $('#maxShear').textContent = `max |${vL}| = ${Math.max(...E.Vmax.map(Math.abs), ...E.Vmin.map(Math.abs)).toFixed(2)} t · ${tag}`;
-      $('#maxMoment').textContent = `max |${mL}| = ${Math.max(...E.Mmax.map(Math.abs), ...E.Mmin.map(Math.abs)).toFixed(2)} t·m · ${tag}`;
+  // each panel shows its own view: one load case, one combination, or the design envelope
+  const cache = {};
+  const getView = vs=>{
+    const V = parseView(vs), key = V.type==='env' ? 'env' : V.type==='case' ? 'case:'+V.id : 'combo:'+V.cb.id;
+    if (cache[key]) return cache[key];
+    const tag = V.type==='env' ? 'Envelope' : V.type==='case' ? 'Case '+caseName(V.id) : V.cb.name;
+    let out;
+    if (V.type==='env'){
+      const E = envelope();
+      out = { V, key, tag, E, valid:E.valid, xs:E.xs, Vh:E.Vmax, Vl:E.Vmin, Mh:E.Mmax, Ml:E.Mmin };
+    } else {
+      const disp = analyze(viewFactors(V));
+      out = { V, key, tag, rr:disp.rr, valid:disp.rr.valid, xs:disp.diag && disp.diag.xs, Vh:disp.diag && disp.diag.V, Mh:disp.diag && disp.diag.M };
     }
-  } else {
-    const disp = analyze(viewFactors(V));
-    renderReactionTable(disp.rr);
-    renderSupportValuesTable(disp.rr);
-    if (disp.rr.valid){
-      okDisp = true;
-      renderDiagram(sfdSvg, disp.diag.xs, disp.diag.V, C('shear'), `${vL} (t/m) · ${tag}`);
-      renderDiagram(bmdSvg, disp.diag.xs, disp.diag.M, C('moment'), `${mL} (t·m/m) · ${tag}`);
-      $('#maxShear').textContent = `max |${vL}| = ${Math.max(...disp.diag.V.map(Math.abs)).toFixed(2)} t · ${tag}`;
-      $('#maxMoment').textContent = `max |${mL}| = ${Math.max(...disp.diag.M.map(Math.abs)).toFixed(2)} t·m · ${tag}`;
-    }
-  }
-  if (!okDisp){ sfdSvg.innerHTML = ''; bmdSvg.innerHTML = ''; $('#maxShear').textContent = ''; $('#maxMoment').textContent = ''; }
+    return cache[key] = out;
+  };
+  // reactions + support table
+  const VR = getView(state.view);
+  if (VR.V.type==='env') renderEnvelopeTables(VR.E);
+  else { FACT = viewFactors(VR.V); renderReactionTable(VR.rr); renderSupportValuesTable(VR.rr); }
+  // SFD
+  const VV = getView(state.viewV), uV = uLabel(state.viewV);
+  if (VV.valid){
+    renderDiagram(sfdSvg, VV.xs, VV.Vh, C('shear'), `V${uV} (t/m) · ${VV.tag}`, VV.Vl);
+    $('#maxShear').textContent = `max |V${uV}| = ${Math.max(...VV.Vh.map(Math.abs), ...(VV.Vl||[]).map(Math.abs)).toFixed(2)} t · ${VV.tag}`;
+  } else { sfdSvg.innerHTML = ''; sfdSvg.__hd = null; $('#maxShear').textContent = ''; }
+  // BMD
+  const VM = getView(state.viewM), uM = uLabel(state.viewM);
+  if (VM.valid){
+    renderDiagram(bmdSvg, VM.xs, VM.Mh, C('moment'), `M${uM} (t·m/m) · ${VM.tag}`, VM.Ml);
+    $('#maxMoment').textContent = `max |M${uM}| = ${Math.max(...VM.Mh.map(Math.abs), ...(VM.Ml||[]).map(Math.abs)).toFixed(2)} t·m · ${VM.tag}`;
+  } else { bmdSvg.innerHTML = ''; bmdSvg.__hd = null; $('#maxMoment').textContent = ''; }
+  const V = VR.V;
   renderElevation();
   renderDesign();          // envelope of design combinations
   FACT = viewFactors(V);   // restore for load labels drawn on the model
@@ -2275,6 +2303,9 @@ if (window.__SAVED_STATE__){
       state.view = r.combo.enabled ? 'combo:1' : 'combo:2';
     }
     delete state.combo;
+    if (r.viewV === undefined) state.viewV = state.view;
+    if (r.viewM === undefined) state.viewM = state.view;
+    if (r.viewD === undefined) state.viewD = 'svc';
     if (!r.cases) state.cases = d.cases;
     nextComboId = Math.max(0, ...state.combos.map(c=>c.id)) + 1;
     nextCaseNo = state.cases.filter(c=>/^C\d+$/.test(c.id)).reduce((m,c)=>Math.max(m, +c.id.slice(1)), 0) + 1;
