@@ -233,7 +233,7 @@
     <div class="stage-wrap" style="border-top:1px solid var(--paper-line);">
       <svg id="elevStage" viewBox="0 0 900 320" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
-    <div class="hint">เรียงช่วงจากล่างขึ้นบน (x = ระยะราบจากปลายซ้ายสุด) · ช่วงบันได n ลูกตั้ง มีช่วงราบ (n−1)·T · แผ่นพับผ้าหนา t สม่ำเสมอ · ใช้กับบันไดที่วิ่งทางเดียวต่อกันเป็นแนวตรง ถ้าเป็นบันไดหักกลับ (U/L) ให้วิเคราะห์ทีละช่วงแล้วเอา reaction ที่ชานพักไปเป็นแรงของอีกช่วง · ควรมีชานพักคั่นระหว่างช่วงบันได</div>
+    <div class="hint">เรียงช่วงจากล่างขึ้นบน (x = ระยะราบจากปลายซ้ายสุด) · ช่วงบันได n ลูกตั้ง มีช่วงราบ (n−1)·T + t คือวัดจากผิวหน้าลูกตั้งตัวแรกถึงผิวหลังลูกตั้งตัวสุดท้าย (ขอบที่ชนชานพัก) · แผ่นพับผ้าหนา t สม่ำเสมอ · ใช้กับบันไดที่วิ่งทางเดียวต่อกันเป็นแนวตรง ถ้าเป็นบันไดหักกลับ (U/L) ให้วิเคราะห์ทีละช่วงแล้วเอา reaction ที่ชานพักไปเป็นแรงของอีกช่วง · ควรมีชานพักคั่นระหว่างช่วงบันได</div>
   </div>
 
   <!-- ANALYSIS MODEL -->
@@ -257,7 +257,7 @@
       <div class="field"><label>γ คอนกรีต (t/m³)</label><input type="text" inputmode="decimal" id="lGamma"></div>
     </div>
     <div id="autoLoadList"></div>
-    <div class="hint">ต่อ 1 m กว้าง บนภาพฉายราบ · ช่วงบันได (พับผ้า) = γ·t·(nR+(n−1)T)/((n−1)T) คือพื้นที่แผ่นคอนกรีตลูกตั้ง+ลูกนอนจริงเฉลี่ยลงบนช่วงราบ · ชานพัก = γ·t</div>
+    <div class="hint">ต่อ 1 m กว้าง บนภาพฉายราบ · ช่วงบันได (พับผ้า) = γ·t·(nR + (n−1)T + t<sub>ล่าง</sub>) / ((n−1)T + t) คือพื้นที่แผ่นคอนกรีตลูกตั้ง+ลูกนอนจริงเฉลี่ยลงบนช่วงราบ (t<sub>ล่าง</sub> = ความหนาใต้ลูกตั้งตัวแรก) · ชานพัก = γ·t</div>
     <div class="controls" style="border-top:1px solid var(--paper-line);">
       <div class="sub">SDL / LL — กรอกเอง (t/m² ต่อพื้นที่ราบ)</div>
       <button id="tgSdl" style="padding:5px 10px;"></button>
@@ -392,7 +392,7 @@ let state = {
   autoActive: { sw:true, sdl:true, ll:true },
   supports: [
     { id:1, key:'A', type:'pin', pos:0 },
-    { id:2, key:'B', type:'roller', pos:4.65 }
+    { id:2, key:'B', type:'roller', pos:4.80 }
   ],
   loads: [],
   cases: [
@@ -406,6 +406,7 @@ let state = {
   ],
   view: 'combo:1',
   design: { fc:240, fy:4000, fyT:4000, cover:2.0, db:12, dbT:10, phiB:0.90, phiV:0.85 },
+  geomVer: 2,
   ui: { theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light' }
 };
 let nextId = 1;
@@ -470,7 +471,7 @@ function geom(){
     const o = { ...sg, idx:i, x0:x, y0:y };
     if (sg.kind==='flight'){
       o.n = Math.max(2, Math.round(sg.n));
-      o.len = (o.n-1)*sg.T; o.rise = o.n*sg.R; o.h = sg.t;
+      o.len = (o.n-1)*sg.T + sg.t; o.rise = o.n*sg.R; o.h = sg.t;
       o.name = 'ช่วงบันได ' + (++nf);
     } else {
       o.len = sg.L; o.rise = 0; o.h = sg.t;
@@ -492,10 +493,12 @@ function regions(){
 function buildLoads(){
   const A = state.area, act = state.autoActive;
   const out = [];
-  const regs = regions();
+  const regs = regions(), G_ = geom();
   regs.forEach(rg=>{
     const s = rg.seg, isF = rg.kind==='flight';
-    const sw = isF ? A.gamma*s.t*(s.n*s.R + (s.n-1)*s.T)/Math.max(1e-9,(s.n-1)*s.T) : A.gamma*s.t;
+    const prevS = G_.segs[s.idx-1];
+    const tb = prevS && prevS.kind==='landing' ? prevS.t : s.t;     // thickness under the first riser
+    const sw = isF ? A.gamma*s.t*(s.n*s.R + (s.n-1)*s.T + tb)/Math.max(1e-9, s.len) : A.gamma*s.t;
     out.push({ id:'sw_'+rg.key, auto:'sw', kind:'udl', start:rg.a, end:rg.b, mag:sw, cat:'DL', active:act.sw, label:'น้ำหนักตัวเอง '+rg.name });
   });
   regs.forEach(rg=>{
@@ -781,12 +784,12 @@ function profiles(G){
     const prev = S[i-1], next = S[i+1];
     if (s.kind==='landing'){
       top.push([s.x0, s.y0]); top.push([s.x1, s.y0]);
-      const xs = (prev && prev.kind==='flight') ? s.x0 + prev.t : s.x0;
+      const xs = s.x0;
       const xe = (next && next.kind==='flight') ? s.x1 + next.t : s.x1;
       bot.push([xs, s.y0 - s.t]); bot.push([xe, s.y0 - s.t]);
     } else {
       if (i===0){ top.push([s.x0, s.y0]); bot.push([s.x0, s.y0 - s.t]); bot.push([s.x0 + s.t, s.y0 - s.t]); }
-      else if (prev.kind==='flight'){ bot.push([s.x0 + s.t, s.y0 - s.t]); }
+      else if (prev.kind==='flight'){ top.push([s.x0, s.y0]); bot.push([s.x0, s.y0 - s.t]); bot.push([s.x0 + s.t, s.y0 - s.t]); }
       for (let k=0;k<s.n;k++){
         const xk = s.x0 + k*s.T, yk = s.y0 + (k+1)*s.R;
         top.push([xk, yk]);
@@ -1236,7 +1239,7 @@ function buildHoops(){
   segs.forEach((s,i)=>{
     if (s.kind!=='landing' || s.len < 1e-6) return;
     const prev = segs[i-1], next = segs[i+1];
-    const xa = prev && prev.kind==='flight' ? prev.x1 + c : s.x0 + c;
+    const xa = prev && prev.kind==='flight' ? prev.x1 - prev.t + c : s.x0 + c;
     const xb = next && next.kind==='flight' ? next.x0 + next.t - c : s.x1 - c;
     bars.push({ lid:s.id, face:'top', pts:[[xa, s.y0 - c],[xb, s.y0 - c]] });
     bars.push({ lid:s.id, face:'bot', pts:[[xa, s.y0 - s.t + c],[xb, s.y0 - s.t + c]] });
@@ -1288,7 +1291,7 @@ function renderRebar(rows){
   drawRebarView(svgs[0], 0, G.L, ctx, { title:'รูปตัดตามยาว — ทั้งบันได', overview:true });
   const nT = Math.min(2, F.n-1);
   drawRebarView(svgs[1], Math.max(0, F.x0-0.5), Math.min(G.L, F.x0 + nT*F.T + F.t + 0.06), ctx, { title:`จุดต่อล่าง — ${F.name}`, focus:F, inset:true });
-  drawRebarView(svgs[2], Math.max(0, F.x1 - nT*F.T - 0.06), Math.min(G.L, F.x1 + F.t + 0.5), ctx, { title:`จุดต่อบน — ${F.name}`, focus:F });
+  drawRebarView(svgs[2], Math.max(0, F.x1 - F.t - nT*F.T - 0.06), Math.min(G.L, F.x1 + 0.5), ctx, { title:`จุดต่อบน — ${F.name}`, focus:F });
 
   const an = rebarAnchorage();
   const ext6 = Math.max(7.5, 6*D.db/10);
@@ -2064,6 +2067,7 @@ if (window.__SAVED_STATE__){
       area:{...d.area, ...(r.area||{})},
       autoActive:{...d.autoActive, ...(r.autoActive||{})},
       design:{...d.design, ...(r.design||{})}, ui:{...d.ui, ...(r.ui||{})} };
+    const needShift = !r.geomVer;
     if (r.geo && !r.segs){ // migrate single-flight save
       const g = r.geo; state.B = g.B ?? d.B;
       state.segs = [];
@@ -2089,6 +2093,18 @@ if (window.__SAVED_STATE__){
     nextComboId = Math.max(0, ...state.combos.map(c=>c.id)) + 1;
     nextCaseNo = state.cases.filter(c=>/^C\d+$/.test(c.id)).reduce((m,c)=>Math.max(m, +c.id.slice(1)), 0) + 1;
     nextSegId = Math.max(...state.segs.map(s=>s.id)) + 1;
+    if (needShift){
+      // older saves measured a flight as (n−1)T: move supports/loads into the same spot of the new layout
+      let xo = 0; const oldB = [], newG = geom();
+      newG.segs.forEach(sg=>{ const lo = sg.kind==='flight' ? (sg.n-1)*sg.T : sg.len; oldB.push([xo, xo+lo, sg]); xo += lo; });
+      const mapX = x=>{
+        for (const [a,b,sg] of oldB){ if (x <= b + 1e-6){ return round4(Math.abs(x-b) < 1e-6 ? sg.x1 : sg.x0 + Math.max(0, x-a)); } }
+        return round4(newG.L);
+      };
+      state.supports.forEach(sp=>{ sp.pos = mapX(sp.pos); });
+      state.loads.forEach(ld=>{ ['pos','start','end'].forEach(k=>{ if (ld[k]!==undefined) ld[k] = mapX(ld[k]); }); });
+      state.geomVer = 2;
+    }
     nextId = (state.loads.length ? Math.max(...state.loads.map(l=>l.id)) : 0) + 1;
     nextSupportId = (state.supports.length ? Math.max(...state.supports.map(s=>s.id)) : 0) + 1;
     saveStatusEl.textContent = 'โหลดค่าที่บันทึกไว้ก่อนหน้าแล้ว · กด Save เพื่อบันทึกทับไฟล์นี้ หรือ Save As เพื่อแยกไฟล์ใหม่';
