@@ -236,8 +236,10 @@
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
       <div style="display:flex; gap:8px;">
         <button class="theme-btn" id="themeBtn" title="สลับโหมดกลางวัน/กลางคืน">🌙 กลางคืน</button>
+        <button id="openBtn" title="เปิดไฟล์ .stair (หรือไฟล์ .html ที่ Save จากเวอร์ชันเก่า)">📂 เปิดไฟล์</button>
         <button class="primary" id="saveAsBtn">💾 Save As</button>
         <button id="saveOverwriteBtn">📝 Save (ทับไฟล์เดิม)</button>
+        <input type="file" id="openInput" accept=".stair,.json,.html" style="display:none;">
       </div>
       <div id="saveStatus" style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:var(--ink-soft);">ยังไม่ได้เลือกไฟล์ — กด Save As ก่อน</div>
     </div>
@@ -546,7 +548,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '2.0.0';
 const APP_DATE = '2026-11-20';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
@@ -2357,19 +2359,26 @@ function showToast(msg){
   toastEl.textContent = msg; toastEl.style.opacity = '1';
   clearTimeout(showToast._t); showToast._t = setTimeout(()=>{ toastEl.style.opacity = '0'; }, 2500);
 }
-function defaultFilename(){ return `stair-folded-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.html`; }
-function buildSavedAppHTML(){
+/* Files are saved as .stair (JSON with the app name, version and the whole input state).
+   The installed app (PWA) registers .stair, so Windows shows the app icon and a
+   double-click opens the file in the app; older .html saves can still be opened. */
+function localStamp(){
+  const n = new Date(), p = x=>String(x).padStart(2,'0');
+  return `${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())}_${p(n.getHours())}-${p(n.getMinutes())}`;
+}
+function safeName(t){ return String(t||'').trim().replace(/[\\/:*?"<>|]/g,'_').slice(0,60); }
+function defaultFilename(ext){
+  const pj = safeName(state.report && state.report.project);
+  return `stair-folded${pj ? '_'+pj : ''}_${localStamp()}${ext || '.stair'}`;
+}
+function buildSaveData(){
   if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
   recompute();
-  toastEl.style.opacity = '0';
-  const docClone = document.cloneNode(true);
-  const ub = docClone.getElementById('updateBar'); if (ub) ub.remove();
-  const boot = docClone.getElementById('stateBootstrap');
-  if (boot) boot.textContent = `window.__SAVED_STATE__ = ${JSON.stringify(state)};`;
-  return '<!DOCTYPE html>\n' + docClone.documentElement.outerHTML;
+  return JSON.stringify({ app:'stair-folded', version:APP_VERSION, savedAt:new Date().toISOString(), state }, null, 1);
 }
-function downloadFallback(html, filename){
-  const url = URL.createObjectURL(new Blob([html], {type:'text/html'}));
+const STAIR_TYPES = [{ description:'STAIR_FOLDED file (.stair)', accept:{ 'application/x-stair-folded':['.stair'] } }];
+function downloadFallback(data, filename){
+  const url = URL.createObjectURL(new Blob([data], {type:'application/octet-stream'}));
   const a = document.createElement('a'); a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
@@ -2379,13 +2388,15 @@ if (window.claude && typeof window.claude.use === 'function'){
   window.claude.use('downloads').then(d=>{ claudeDownloads = d; }).catch(()=>{});
 }
 async function doSaveAs(){
-  const html = buildSavedAppHTML();
+  const data = buildSaveData();
+  toastEl.style.opacity = '0';
   if (claudeDownloads){
-    const fn = defaultFilename();
+    // the artifact viewer only hands out known file types: save as .stair.json (opens the same way)
+    const fn = defaultFilename('.stair.json');
     try {
-      await claudeDownloads.save({ filename: fn, data: html });
-      saveStatusEl.textContent = `ดาวน์โหลดแล้ว: ${fn} · เปิดไฟล์นั้นเพื่อทำงานต่อ (ในไฟล์ที่ดาวน์โหลด Save จะบันทึกทับได้)`;
-      showToast('✓ ดาวน์โหลดไฟล์แล้ว (เก็บค่าที่กรอกไว้ทั้งหมด)');
+      await claudeDownloads.save({ filename: fn, data });
+      saveStatusEl.textContent = `ดาวน์โหลดแล้ว: ${fn} · เปิดด้วยปุ่ม "เปิดไฟล์" เพื่อทำงานต่อ`;
+      showToast('✓ ดาวน์โหลดไฟล์แล้ว');
     } catch(err){
       if (err && err.code === 'declined') return;
       showToast('⚠ บันทึกไม่สำเร็จในหน้านี้');
@@ -2394,29 +2405,30 @@ async function doSaveAs(){
   }
   if (window.showSaveFilePicker){
     try {
-      const handle = await window.showSaveFilePicker({ suggestedName: defaultFilename(), types:[{description:'HTML file', accept:{'text/html':['.html']}}] });
-      await writeToHandle(handle, html);
+      const handle = await window.showSaveFilePicker({ suggestedName: defaultFilename(), types: STAIR_TYPES });
+      await writeToHandle(handle, data);
       savedFileHandle = handle;
       saveStatusEl.textContent = `บันทึกเป็น: ${handle.name} · กด "Save" เพื่อบันทึกทับได้`;
-      showToast('✓ บันทึกไฟล์ใหม่สำเร็จ (เก็บค่าที่กรอกไว้ทั้งหมด)');
+      showToast('✓ บันทึกไฟล์ใหม่สำเร็จ');
       return;
     } catch(err){ if (err.name === 'AbortError') return; }
   }
   const fn = defaultFilename();
-  downloadFallback(html, fn);
+  downloadFallback(data, fn);
   savedFileHandle = null;
   saveStatusEl.textContent = `ดาวน์โหลดแล้ว: ${fn} (เบราว์เซอร์นี้บันทึกทับไม่ได้ — Save จะดาวน์โหลดไฟล์ใหม่แทน)`;
-  showToast('✓ ดาวน์โหลดไฟล์แล้ว (เก็บค่าที่กรอกไว้ทั้งหมด)');
+  showToast('✓ ดาวน์โหลดไฟล์แล้ว');
 }
 async function doSaveOverwrite(){
   if (claudeDownloads){ await doSaveAs(); return; }
-  const html = buildSavedAppHTML();
   if (savedFileHandle){
+    const data = buildSaveData();
     try {
       if ((await savedFileHandle.queryPermission({mode:'readwrite'})) !== 'granted'){
         if ((await savedFileHandle.requestPermission({mode:'readwrite'})) !== 'granted') throw new Error('permission-denied');
       }
-      await writeToHandle(savedFileHandle, html);
+      await writeToHandle(savedFileHandle, data);
+      saveStatusEl.textContent = `บันทึกทับ ${savedFileHandle.name} แล้ว · ${new Date().toLocaleTimeString('th-TH')}`;
       showToast(`✓ บันทึกทับ ${savedFileHandle.name} สำเร็จ`);
       return;
     } catch(err){
@@ -2427,6 +2439,41 @@ async function doSaveOverwrite(){
   }
   await doSaveAs();
 }
+function parseSavedText(txt){
+  try { const j = JSON.parse(txt); return j && j.state ? j.state : j; } catch(e){}
+  const m = txt.match(/window\.__SAVED_STATE__ = (\{[\s\S]*?\});\s*<\/script>/);   // older .html saves
+  if (m){ try { return JSON.parse(m[1]); } catch(e){} }
+  return null;
+}
+async function openFromFile(file, handle){
+  let r = null;
+  try { r = parseSavedText(await file.text()); } catch(e){}
+  if (!r || !Array.isArray(r.supports)){ showToast('⚠ ไฟล์นี้ไม่ใช่ไฟล์ของ STAIR_FOLDED'); return; }
+  if (!loadState(r)){ showToast('⚠ เปิดไฟล์ไม่สำเร็จ'); return; }
+  applyTheme();
+  prevBounds = geom().bounds.slice();
+  syncInputs();
+  recompute();
+  const isStair = /\.stair$/i.test(file.name);
+  savedFileHandle = handle && isStair ? handle : null;
+  saveStatusEl.textContent = savedFileHandle
+    ? `เปิดไฟล์: ${file.name} · กด "Save" เพื่อบันทึกทับได้`
+    : isStair ? `เปิดไฟล์: ${file.name} · เบราว์เซอร์นี้บันทึกทับไฟล์เดิมไม่ได้ — กด "Save As"` : `เปิดไฟล์: ${file.name} · กด "Save As" เพื่อบันทึกเป็นไฟล์ .stair`;
+  showToast(`✓ เปิด ${file.name} แล้ว`);
+}
+async function doOpen(){
+  if (window.showOpenFilePicker && !claudeDownloads){
+    try {
+      const [h] = await window.showOpenFilePicker({ multiple:false, types:[{ description:'STAIR_FOLDED file', accept:{ 'application/x-stair-folded':['.stair'], 'application/json':['.json'], 'text/html':['.html'] } }] });
+      await openFromFile(await h.getFile(), h);
+      return;
+    } catch(err){ if (err.name === 'AbortError') return; }
+  }
+  $('#openInput').value = '';
+  $('#openInput').click();
+}
+$('#openBtn').addEventListener('click', doOpen);
+$('#openInput').addEventListener('change', e=>{ const f = e.target.files && e.target.files[0]; if (f) openFromFile(f, null); });
 $('#saveAsBtn').addEventListener('click', doSaveAs);
 $('#saveOverwriteBtn').addEventListener('click', doSaveOverwrite);
 
@@ -2646,7 +2693,7 @@ async function makeReportPDF(){
     // decode figures before rendering
     await Promise.all([...host.querySelectorAll('img')].map(im=> im.decode ? im.decode().catch(()=>{}) : 0));
     const R = state.report || {};
-    const fname = `รายการคำนวณบันได_${(R.project||'stair').replace(/[\\/:*?"<>|]/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+    const fname = `รายการคำนวณบันได_${(R.project||'stair').replace(/[\\/:*?"<>|]/g,'_')}_${localStamp().slice(0,10)}.pdf`;
     const blob = await window.html2pdf().set({
       margin: [12, 10, 14, 10],
       filename: fname,
@@ -2685,6 +2732,7 @@ async function makeReportPDF(){
 }
 
 /* ============== INIT / RESTORE ============== */
+const DEFAULT_STATE = JSON.parse(JSON.stringify(state));
 let restoredAfterUpdate = false;
 if (!window.__SAVED_STATE__){
   try {
@@ -2692,9 +2740,11 @@ if (!window.__SAVED_STATE__){
     if (pend){ window.__SAVED_STATE__ = JSON.parse(pend); sessionStorage.removeItem('stairPendingState'); restoredAfterUpdate = true; }
   } catch(e){}
 }
-if (window.__SAVED_STATE__){
+// merge a saved state over the defaults, migrating older saves; returns true on success
+function loadState(r){
   try {
-    const d = state, r = window.__SAVED_STATE__;
+    const d = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    d.ui.theme = state.ui ? state.ui.theme : d.ui.theme;
     state = { ...d, ...r,
       area:{...d.area, ...(r.area||{})},
       autoActive:{...d.autoActive, ...(r.autoActive||{})},
@@ -2742,8 +2792,11 @@ if (window.__SAVED_STATE__){
     }
     nextId = (state.loads.length ? Math.max(...state.loads.map(l=>l.id)) : 0) + 1;
     nextSupportId = (state.supports.length ? Math.max(...state.supports.map(s=>s.id)) : 0) + 1;
-    saveStatusEl.textContent = restoredAfterUpdate ? `อัปเดตเป็น v${APP_VERSION} แล้ว · ค่าที่กรอกไว้ยังอยู่ครบ` : 'โหลดค่าที่บันทึกไว้ก่อนหน้าแล้ว · กด Save เพื่อบันทึกทับไฟล์นี้ หรือ Save As เพื่อแยกไฟล์ใหม่';
-  } catch(e){ console.error('restore failed', e); }
+    return true;
+  } catch(e){ console.error('restore failed', e); state = JSON.parse(JSON.stringify(DEFAULT_STATE)); return false; }
+}
+if (window.__SAVED_STATE__ && loadState(window.__SAVED_STATE__)){
+  saveStatusEl.textContent = restoredAfterUpdate ? `อัปเดตเป็น v${APP_VERSION} แล้ว · ค่าที่กรอกไว้ยังอยู่ครบ` : 'โหลดค่าจากไฟล์ .html เก่าแล้ว · กด Save As เพื่อบันทึกเป็นไฟล์ .stair';
 }
 $('#rbFlight').addEventListener('change', ()=>recompute());
 [['#rpProject','project'],['#rpPart','part'],['#rpEngineer','engineer']].forEach(([q,k])=>{
@@ -2761,6 +2814,13 @@ applyTheme();
 prevBounds = geom().bounds.slice();
 syncInputs();
 recompute();
+if ('launchQueue' in window && window.launchQueue && typeof window.launchQueue.setConsumer === 'function'){
+  window.launchQueue.setConsumer(async params=>{
+    if (!params.files || !params.files.length) return;
+    const h = params.files[0];
+    try { await openFromFile(await h.getFile(), h); } catch(e){ showToast('⚠ เปิดไฟล์ไม่สำเร็จ'); }
+  });
+}
 </script>
 <script>
 /* PWA: register the service worker only when served over http(s) (e.g. GitHub Pages).
