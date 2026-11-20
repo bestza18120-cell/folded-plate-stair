@@ -238,7 +238,7 @@
         <button class="theme-btn" id="themeBtn" title="สลับโหมดกลางวัน/กลางคืน">🌙 กลางคืน</button>
         <button id="openBtn" title="เปิดไฟล์ .stair (หรือไฟล์ .html ที่ Save จากเวอร์ชันเก่า)">📂 เปิดไฟล์</button>
         <button class="primary" id="saveAsBtn">💾 Save As</button>
-        <button id="saveOverwriteBtn">📝 Save (ทับไฟล์เดิม)</button>
+        <button id="saveOverwriteBtn" title="บันทึกทับไฟล์ที่เปิดอยู่">📝 Save</button>
         <input type="file" id="openInput" accept=".stair,.json,.html" style="display:none;">
       </div>
       <div id="saveStatus" style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:var(--ink-soft);">ยังไม่ได้เลือกไฟล์ — กด Save As ก่อน</div>
@@ -548,7 +548,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const APP_DATE = '2026-11-20';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
