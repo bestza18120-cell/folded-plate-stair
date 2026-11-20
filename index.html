@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Stair Folded">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Sarabun:wght@400;600;700;800&display=swap');
 
   html{color-scheme:light;}
   :root{
@@ -468,6 +468,21 @@
     </div>
   </div>
 
+  <!-- REPORT -->
+  <div class="panel">
+    <div class="panel-head"><h2>รายการคำนวณ</h2></div>
+    <div class="controls">
+      <div class="field"><label>ชื่อโครงการ</label><input type="text" id="rpProject" style="width:220px;" placeholder="เช่น อาคารพักอาศัย 3 ชั้น"></div>
+      <div class="field"><label>ส่วนของอาคาร</label><input type="text" id="rpPart" style="width:160px;" placeholder="เช่น บันได ST-1"></div>
+      <div class="field"><label>ผู้คำนวณ</label><input type="text" id="rpEngineer" style="width:160px;"></div>
+    </div>
+    <div class="controls" style="border-bottom:none;">
+      <button class="primary" id="reportBtn">📄 สร้างรายการคำนวณ (PDF)</button>
+      <span id="reportStatus" style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:var(--ink-soft);"></span>
+    </div>
+    <div class="hint">ไฟล์ PDF ขนาด A4 ดึงค่าจากที่กรอกและผลคำนวณปัจจุบันทั้งหมด: ข้อมูลออกแบบ รูปตัด น้ำหนักบรรทุก combination ผลวิเคราะห์ (envelope) ขั้นตอนออกแบบเหล็ก แรงเฉือน การแอ่นตัว รูปเหล็กเสริม และสรุปผล · ครั้งแรกต้องต่ออินเทอร์เน็ตเพื่อโหลดตัวสร้าง PDF</div>
+  </div>
+
   <footer><span id="footVer"></span> · หน่วย: กำลัง (t), โมเมนต์ (t·m), ระยะ (m), หน่วยแรง (ksc) · แรงลง = ค่าบวก · ผลวิเคราะห์ต่อความกว้าง 1 m</footer>
 </div>
 
@@ -503,6 +518,7 @@ let state = {
   viewD: 'svc',
   design: { fc:240, fy:4000, fyT:4000, cover:2.0, db:12, dbT:10, phiB:0.90, phiV:0.85 },
   defl: { xi:2.0, sus:0, limLong:240, limLL:360 },
+  report: { project:'', part:'', engineer:'' },
   geomVer: 2,
   ui: { theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light' }
 };
@@ -512,6 +528,7 @@ let nextSegId = 4;
 let prevBounds = null;
 let dragTarget = null;
 let LOADS = [];       // auto + user loads, rebuilt every recompute
+let LAST_ROWS = null, LAST_DR = null;
 let FACT = {};       // active factor per load case for the current analysis
 let nextCaseNo = 1, nextComboId = 3;
 
@@ -523,7 +540,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.7.2';
+const APP_VERSION = '1.8.0';
 const APP_DATE = '2026-11-19';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
@@ -1194,6 +1211,7 @@ function renderDesign(){
     tb.innerHTML = `<tr><td class="fail">⚠ ${E.message}</td></tr>`;
     renderRebar(null);
     renderDeflection(null);
+    LAST_ROWS = null; LAST_DR = null;
     return;
   }
   const D = state.design;
@@ -1248,6 +1266,7 @@ function renderDesign(){
     cb.appendChild(tr);
   });
   const DR = computeDeflection(rows);
+  LAST_ROWS = rows; LAST_DR = DR;
   const spanOk = [];
   minThickness().forEach((s,k)=>{
     const dr = DR && DR.valid ? DR.spans[k] : null;
@@ -2123,6 +2142,7 @@ const LIMITS = { R:[0.05,0.5], T:[0.1,1], n:[2,60], t:[0.05,1], B:[0.3,10], L:[0
 function syncInputs(){
   BIND.forEach(([sel,obj,key])=>{ $(sel).value = obj()[key]; });
   $('#dDb').value = state.design.db; $('#dDbT').value = state.design.dbT;
+  $('#rpProject').value = state.report.project||''; $('#rpPart').value = state.report.part||''; $('#rpEngineer').value = state.report.engineer||'';
   $('#dfLim').value = String(state.defl.limLong); $('#dfLimLL').value = String(state.defl.limLL);
 }
 BIND.forEach(([sel,obj,key])=>{
@@ -2345,6 +2365,260 @@ async function doSaveOverwrite(){
 $('#saveAsBtn').addEventListener('click', doSaveAs);
 $('#saveOverwriteBtn').addEventListener('click', doSaveOverwrite);
 
+/* ============== CALCULATION REPORT (PDF) ==============
+   Builds an A4 calculation sheet from the current inputs and results, renders it
+   with html2pdf (html2canvas + jsPDF, loaded on demand) and hands over a PDF file.
+   Thai text is rendered by the browser, so it always shows correctly in the PDF. */
+const H2P_URL = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+function loadScriptOnce(src){
+  if (window.__h2pLoading) return window.__h2pLoading;
+  window.__h2pLoading = new Promise((res, rej)=>{
+    const sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = ()=>{ window.__h2pLoading = null; rej(new Error('load')); };
+    document.head.appendChild(sc);
+  });
+  return window.__h2pLoading;
+}
+function esc(t){ return String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function svgToImg(svg, widthPx){
+  const clone = svg.cloneNode(true);
+  clone.querySelectorAll('g.hov').forEach(g=>g.remove());
+  clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  const vb = (svg.getAttribute('viewBox')||'0 0 900 300').split(/\s+/).map(Number);
+  clone.setAttribute('width', vb[2]); clone.setAttribute('height', vb[3]);
+  const str = new XMLSerializer().serializeToString(clone);
+  const src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
+  // explicit pixel size so page-break avoidance can measure the figure before it loads
+  const w = Math.round(widthPx || 718), h = Math.round(w * vb[3] / vb[2]);
+  return `<img src="${src}" width="${w}" height="${h}" style="width:${w}px; height:${h}px; display:block; margin:4px auto;">`;
+}
+function diagramImg(xs, ys, ys2, color, unit){
+  const tmp = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  tmp.setAttribute('viewBox','0 0 900 200');
+  const host = document.createElement('div'); host.style.cssText = 'position:fixed; left:-20000px; top:0; width:900px;';
+  host.appendChild(tmp); document.body.appendChild(host);
+  renderDiagram(tmp, xs, ys, color, unit, ys2);
+  const img = svgToImg(tmp, 718);
+  host.remove();
+  return img;
+}
+
+function buildReportHTML(){
+  const G = geom(), D = state.design, A = state.area, rows = LAST_ROWS, DR = LAST_DR;
+  const E = envelope();
+  const today = new Date();
+  const R = state.report || {};
+  const nm = barName(D.db), nt = barName(D.dbT);
+  const f2 = v=>fmt(v,2), f3 = v=>fmt(v,3), f1 = v=>fmt(v,1);
+  const cSec = (num, title)=>`<h2>${num}. ${esc(title)}</h2>`;
+  const tbl = (head, body)=>`<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  let h = '';
+
+  // ---- header ----
+  h += `<div class="rp-head">
+    <div class="rp-title">รายการคำนวณบันไดพับผ้าพาดทางยาว</div>
+    <table class="rp-meta"><tr><td>โครงการ</td><td>${esc(R.project||'—')}</td><td>วันที่</td><td>${today.toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}</td></tr>
+    <tr><td>ส่วนของอาคาร</td><td>${esc(R.part||'บันได')}</td><td>ผู้คำนวณ</td><td>${esc(R.engineer||'—')}</td></tr></table>
+    <div class="rp-small">คำนวณด้วย STAIR_FOLDED v${APP_VERSION} · วิธีกำลัง (SDM) ตาม ACI 318 · หน่วย t, m, ksc · คิดต่อความกว้าง 1 m</div>
+  </div>`;
+
+  // ---- 1. design data ----
+  h += cSec(1, 'ข้อมูลออกแบบ');
+  h += `<p><b>วัสดุ:</b> f'c = ${D.fc} ksc · fy เหล็กหลัก = ${D.fy} ksc (${nm}) · fy เหล็กกระจาย = ${D.fyT} ksc (${nt}) · covering = ${D.cover} cm · γ คอนกรีต = ${A.gamma} t/m³ · φ ดัด = ${D.phiB} · φ เฉือน = ${D.phiV}</p>`;
+  h += tbl(['ส่วน','x (m)','รายละเอียด','ช่วงราบ (m)'], G.segs.filter(s=>s.len>1e-6).map(s=>[
+    s.name, `${f2(s.x0)} – ${f2(s.x1)}`,
+    s.kind==='flight' ? `R = ${s.R}, T = ${s.T}, n = ${s.n}, t = ${s.t} m` : `หนา t = ${s.t} m`,
+    s.kind==='flight' ? `(n−1)T + t = ${s.n-1}(${s.T}) + ${s.t} = ${f2(s.len)}` : f2(s.len)]));
+  h += `<p>ความยาวราบรวม L = ${f3(G.L)} m · ความสูงรวม H = ${f3(G.H)} m · ความกว้างบันได B = ${G.B} m</p>`;
+  h += `<p><b>จุดรองรับ:</b> ${getActiveSupports().map(s=>`${s.key} = ${supportLabel(s.type)} ที่ x = ${f2(s.pos)} m`).join(' · ')}</p>`;
+  h += `<div class="fig">${svgToImg($('#elevStage'), 640)}</div>`;
+
+  // ---- 2. loads ----
+  h += cSec(2, 'น้ำหนักบรรทุก (ต่อแถบกว้าง 1 m บนภาพฉายราบ)');
+  const loadRows = [];
+  G.segs.filter(s=>s.len>1e-6).forEach(s=>{
+    let dl;
+    if (s.kind==='flight'){
+      const prevS = G.segs[s.idx-1], tb = prevS && prevS.kind==='landing' ? prevS.t : s.t;
+      const area = s.t*(s.n*s.R + (s.n-1)*s.T + tb);
+      dl = `${A.gamma} × ${s.t}(${s.n}×${s.R} + ${s.n-1}×${s.T} + ${tb}) / ${f2(s.len)} = <b>${f3(A.gamma*area/s.len)}</b>`;
+    } else dl = `${A.gamma} × ${s.t} = <b>${f3(A.gamma*s.t)}</b>`;
+    const sg = state.segs.find(x=>x.id===s.id);
+    loadRows.push([s.name, dl, f3(sg.sdl||0), f3(sg.ll||0)]);
+  });
+  h += tbl(['ส่วน','DL น้ำหนักคอนกรีต (t/m)','SDL (t/m)','LL (t/m)'], loadRows);
+  if (state.loads.length){
+    h += `<p><b>แรงที่กำหนดเพิ่ม:</b></p>` + tbl(['ชนิด','ตำแหน่ง (m)','ขนาด','Load case','สถานะ'], state.loads.map(l=>[
+      l.kind==='point'?'Point':l.kind==='udl'?'UDL':'Moment',
+      l.kind==='udl' ? `${f2(l.start)} – ${f2(l.end)}` : f2(l.pos),
+      l.kind==='udl' ? `${l.mag} t/m` : l.kind==='point' ? `${l.mag} t` : `${l.mag} t·m`,
+      caseName(l.cat||'DL'), l.active===false?'ปิด':'ใช้']));
+  }
+  const offs = ['sw','sdl','ll'].filter(k=>state.autoActive[k]===false);
+  if (offs.length) h += `<p class="warnp">หมายเหตุ: ปิดแรงอัตโนมัติกลุ่ม ${offs.map(k=>({sw:'DL',sdl:'SDL',ll:'LL'})[k]).join(', ')} ไว้ระหว่างคำนวณ</p>`;
+  h += `<p><b>Load combination:</b></p>` + tbl(['ชื่อ','สูตร','ใช้ออกแบบ'], state.combos.map(cb=>[cb.name, comboExpr(cb), cb.design?'✓':'—']));
+
+  // ---- 3. analysis ----
+  h += cSec(3, 'ผลวิเคราะห์โครงสร้าง (envelope ของ combination ที่ใช้ออกแบบ)');
+  if (!E.valid){ h += `<p class="failp">⚠ ${esc(E.message)}</p>`; }
+  else {
+    const reacRows = getActiveSupports().map(s=>{
+      let Rx=-Infinity, gx='';
+      E.list.forEach(r=>{ const x = r.rr.reactions[s.key]; if (x && x.F>Rx){ Rx=x.F; gx=r.cb.name; } });
+      return [`${s.key} (${supportLabel(s.type)}) x = ${f2(s.pos)}`, `${f2(Rx)} (${gx})`, f2(Rx*G.B)];
+    });
+    h += tbl(['Support','Ru ต่อ 1 m (t/m)','Ru รวม B = '+G.B+' m (t)'], reacRows);
+    h += `<div class="fig">${diagramImg(E.xs, E.Vmax, E.Vmin, '#8B5FBF', 'Vu (t/m) · Envelope')}</div>`;
+    h += `<div class="fig">${diagramImg(E.xs, E.Mmax, E.Mmin, '#4A7A5C', 'Mu (t·m/m) · Envelope')}</div>`;
+    if (rows) h += tbl(['ส่วน','Mu+ (t·m)','Mu− (t·m)','|Vu| สูงสุด (t)'], rows.map(r=>[
+      r.rg.name, `${f2(r.mPos)} @${f2(r.xPos)} (${r.gPos||'—'})`, `${f2(r.mNeg)}${r.gNeg?' ('+r.gNeg+')':''}`, `${f2(r.sh.Vu)} (${r.gV||'—'})`]));
+  }
+
+  // ---- 4. flexural design ----
+  h += cSec(4, 'ออกแบบเหล็กรับโมเมนต์');
+  if (rows){
+    const b = 100;
+    rows.forEach(r=>{
+      h += `<h3>${esc(r.rg.name)} — h = ${f1(r.bot.h)} cm</h3>`;
+      [['เหล็กล่าง (+Mu)', r.mPos, r.bot], ['เหล็กบน (−Mu)', r.mNeg, r.top]].forEach(([lab, M, des])=>{
+        const Mu = Math.abs(M), d = des.d, rhoMin = rhoMinFor(D.fy);
+        let lines = [`d = h − covering − db/2 = ${f1(des.h)} − ${D.cover} − ${f2(D.db/20)} = ${f2(d)} cm`];
+        if (Mu > 1e-3){
+          const Rn = Mu*1e5/(D.phiB*b*d*d);
+          const rho = 0.85*D.fc/D.fy*(1-Math.sqrt(Math.max(0, 1-2*Rn/(0.85*D.fc))));
+          lines.push(`Rn = Mu/(φbd²) = ${f2(Mu)}×10⁵ / (${D.phiB}×${b}×${f2(d)}²) = ${f2(Rn)} ksc`);
+          lines.push(`ρ = (0.85f'c/fy)[1 − √(1 − 2Rn/0.85f'c)] = ${fmt(rho,5)}${des.rhoMax ? ` ≤ ρmax = ${fmt(des.rhoMax,4)}` : ''}`);
+          lines.push(`As,req = ρbd = ${fmt(rho,5)}×${b}×${f2(d)} = ${f2(des.AsCalc)} cm²/m`);
+        } else lines.push(`Mu ≈ 0 → ใช้เหล็กขั้นต่ำ`);
+        lines.push(`As,min = ${rhoMin}bh = ${rhoMin}×${b}×${f1(des.h)} = ${f2(des.AsMin)} cm²/m`);
+        lines.push(`ใช้ <b>${nm}@${(des.s/100).toFixed(3)}</b> → As = ${f2(des.AsProv)} cm²/m (s,max = min(3h, 45) = ${f1(Math.min(3*des.h,45))} cm)`);
+        if (Mu > 1e-3) lines.push(`a = Asfy/(0.85f'c·b) = ${f2(des.AsProv*D.fy/(0.85*D.fc*b))} cm · φMn = ${f2(des.phiMn)} t·m ${des.phiMn >= Mu-1e-6 ? '≥' : '<'} Mu = ${f2(Mu)} t·m`);
+        h += `<div class="calc"><div class="calc-h">${lab}: Mu = ${f2(Mu)} t·m/m ${des.ok ? '<span class="okp">✓ ผ่าน</span>' : `<span class="failp">✗ ${esc(des.note)}</span>`}</div>${lines.map(l=>`<div>${l}</div>`).join('')}</div>`;
+      });
+      h += `<div class="calc"><div class="calc-h">เหล็กกระจาย (ตามขวาง)</div><div>As,t = ${rhoMinFor(D.fyT)}bh = ${f2(r.tmp.As)} cm²/m → ใช้ <b>${nt}@${(r.tmp.s/100).toFixed(3)}</b> (As = ${f2(r.tmp.AsProv)} cm²/m, s,max = min(5h, 45))</div></div>`;
+      if (r.rg.kind==='flight'){
+        h += `<div class="calc"><div class="calc-h">จัดเหล็กช่วงพับผ้า</div><div>ปลอกหนึ่งชุดทำหน้าที่ทั้งเหล็กล่างและบน → ใช้ระยะที่น้อยกว่า = min(${(r.bot.s/100).toFixed(3)}, ${(r.top.s/100).toFixed(3)})</div><div>→ <b>ปลอก ${nm}@${(Math.min(r.bot.s, r.top.s)/100).toFixed(3)}</b> ปลายงอ 135° ≥ 6db</div><div>เหล็กช่วยยึด ${nt} ที่มุมด้านในของปลอกทุกมุม</div></div>`;
+      }
+    });
+  }
+
+  // ---- 5. shear ----
+  h += cSec(5, 'ตรวจแรงเฉือน');
+  if (rows) h += tbl(['ส่วน','Vu (t)','φVc = φ·0.53√f\'c·b·d (t)','ผล'], rows.map(r=>[
+    r.rg.name, `${f2(r.sh.Vu)}${r.gV?' ('+r.gV+')':''}`, `${D.phiV}×0.53×√${D.fc}×100×${f2(r.bot.d)} / 1000 = ${f2(r.sh.phiVc)}`, r.sh.ok ? '<span class="okp">✓ ผ่าน</span>' : '<span class="failp">✗ ไม่ผ่าน</span>']));
+
+  // ---- 6. deflection ----
+  h += cSec(6, 'ตรวจการแอ่นตัว (ACI 318-19)');
+  const P = state.defl;
+  h += `<p>น้ำหนักใช้งาน: ${esc(deflFactors().name==='D+L' ? '1.0DL + 1.0SDL + 1.0LL' : deflFactors().name)} · Ec = 15,100√f'c = ${Math.round(15100*Math.sqrt(D.fc)).toLocaleString()} ksc · fr = 2.0√f'c = ${f2(2*Math.sqrt(D.fc))} ksc · ξ = ${P.xi} · LL คงค้าง ${P.sus||0}% · เกณฑ์ ΔL ≤ L/${P.limLL}, ระยะยาว + LL ≤ L/${P.limLong}</p>`;
+  h += `<p class="rp-small">Ie = Icr / (1 − ((⅔)Mcr/Ma)²(1 − Icr/Ig)) เมื่อ Ma &gt; ⅔Mcr · λΔ = ξ/(1 + 50ρ′) · ความหนาที่ไม่ต้องตรวจการแอ่นตัว (ACI 7.3.1) = L/20, L/24, L/28, L/10 × (0.4 + fy/7000)</p>`;
+  if (DR && DR.valid){
+    const mt = minThickness();
+    h += tbl(['ช่วง','h / h ไม่ต้องตรวจ (cm)','Ma (t·m)','Mcr (t·m)','Ie (cm⁴)','ΔL (mm)','ระยะยาว+LL (mm)','ผล'], DR.spans.map((s,k)=>[
+      `${s.kind} ${f2(s.a)}–${f2(s.b)} (L = ${f2(s.L)})`,
+      `${f1(mt[k].h*100)} / ${f1(mt[k].hmin*100)}${mt[k].ok ? '' : ' <span class="warnp">(ต่ำกว่า)</span>'}`,
+      f2(s.Ma), f2(s.Mcr), s.Ie.toFixed(0),
+      `${f1(s.mL)} ≤ ${f1(s.limL)}`, `${f1(s.mLT)} ≤ ${f1(s.limLT)}`,
+      s.ok ? '<span class="okp">✓ ผ่าน</span>' : (mt[k].ok ? '<span class="okp">✓</span> <span class="warnp">(หนาพอ)</span>' : '<span class="failp">✗ ไม่ผ่าน</span>')]));
+    h += `<div class="fig">${diagramImg(DR.xs, DR.dT.map(v=>-v), DR.dLT.map(v=>-v), '#4A7A5C', 'Δ (mm) · ทึบ = ทันที · ประ = ระยะยาว + LL')}</div>`;
+  }
+
+  // ---- 7. rebar drawing ----
+  h += cSec(7, 'รูปเหล็กเสริม (เชิงหลักการ)');
+  h += `<div class="fig">${svgToImg($('#rebarAll'), 718)}</div>`;
+  h += `<div class="fig2">${svgToImg($('#rebarLo'), 352).replace('display:block; margin:4px auto;','display:inline-block; margin:0 3px;')}${svgToImg($('#rebarHi'), 352).replace('display:block; margin:4px auto;','display:inline-block; margin:0 3px;')}</div>`;
+
+  // ---- 8. summary ----
+  h += cSec(8, 'สรุปผล');
+  if (rows){
+    h += tbl(['ส่วน','เหล็กล่าง','เหล็กบน','เหล็กกระจาย'], rows.map(r=> r.rg.kind==='flight'
+      ? [r.rg.name, `ปลอก ${nm}@${(Math.min(r.bot.s,r.top.s)/100).toFixed(3)}`, '(ปลอกชุดเดียวกัน)', `${nt}@${(r.tmp.s/100).toFixed(3)} (เหล็กช่วยยึด)`]
+      : [r.rg.name, `${nm}@${(r.bot.s/100).toFixed(3)}`, `${nm}@${(r.top.s/100).toFixed(3)}`, `${nt}@${(r.tmp.s/100).toFixed(3)}`]));
+    const sum = $('#designSummary').textContent.includes('ผ่านทุกรายการ');
+    h += `<p><b>ผลรวม:</b> ${sum ? '<span class="okp">✓ ผ่านทุกรายการ</span>' : '<span class="failp">✗ มีรายการไม่ผ่าน — ดูรายละเอียดข้างต้น</span>'}</p>`;
+  }
+  h += `<p class="rp-small">รูปเหล็กเสริมเป็นรูปเชิงหลักการ ไม่ใช่ shop drawing · ผลคำนวณต้องให้วิศวกรผู้ออกแบบตรวจสอบก่อนใช้งาน</p>`;
+  return h;
+}
+
+const REPORT_CSS = `
+  .rp{font-family:'Sarabun','Inter',sans-serif; color:#111; background:#fff; width:718px; font-size:12.5px; line-height:1.5;}
+  /* break lines only at spaces: the canvas renderer cannot follow the browser's Thai word breaking */
+  .rp, .rp *{word-break:keep-all; line-break:strict;}
+  .rp h2{font-size:15px; margin:16px 0 6px; padding-bottom:3px; border-bottom:1.5px solid #1A2332;}
+  .rp h3{font-size:13px; margin:10px 0 4px; color:#3B5B7A;}
+  .rp p{margin:4px 0;}
+  .rp table{width:100%; border-collapse:collapse; margin:6px 0; font-size:11.5px; font-family:'Sarabun','Inter',sans-serif;}
+  .rp th, .rp td, .rp h2, .rp h3, .rp p, .rp div{font-family:'Sarabun','Inter',sans-serif; letter-spacing:0; text-transform:none;}
+  .rp th, .rp td{border:1px solid #bbb; padding:3px 6px; text-align:left; vertical-align:top;}
+  .rp th{background:#eef1f5; font-weight:700;}
+  .rp tr{page-break-inside:avoid;}
+  .rp .rp-head{border:1.5px solid #1A2332; padding:8px 10px; margin-bottom:6px;}
+  .rp .rp-title{font-size:18px; font-weight:800; text-align:center; margin-bottom:6px;}
+  .rp .rp-meta td{border:none; padding:1px 6px;}
+  .rp .rp-meta td:nth-child(odd){color:#555; width:90px;}
+  .rp .rp-small{font-size:10.5px; color:#555;}
+  .rp .calc{border-left:3px solid #3B5B7A; padding:3px 8px; margin:5px 0; background:#f7f8fa; page-break-inside:avoid; font-size:11.8px;}
+  .rp .calc-h{font-weight:700; margin-bottom:2px;}
+  .rp .okp{color:#2F7A4A; font-weight:700;} .rp .failp{color:#C4432A; font-weight:700;} .rp .warnp{color:#B7791F; font-weight:600;}
+  .rp .fig, .rp .fig2{page-break-inside:avoid; text-align:center; margin:4px 0;}
+  .rp .pb{page-break-before:always; height:0;}
+`;
+
+async function makeReportPDF(){
+  const btn = $('#reportBtn'), st = $('#reportStatus');
+  if (!LAST_ROWS){ showToast('⚠ ยังไม่มีผลออกแบบ — ตรวจ support และน้ำหนักก่อน'); return; }
+  btn.disabled = true; st.textContent = 'กำลังสร้าง PDF…';
+  const wasDark = state.ui && state.ui.theme === 'dark';
+  let host;
+  try {
+    await loadScriptOnce(H2P_URL);
+    if (wasDark){ state.ui.theme = 'light'; applyTheme(); recompute(); }   // figures in print colours
+    try { await document.fonts.load('400 13px Sarabun'); await document.fonts.load('700 13px Sarabun'); } catch(e){}
+    // build the sheet as a plain element (not attached to the page); html2pdf places it in its own overlay
+    host = document.createElement('div');
+    host.className = 'rp';
+    host.innerHTML = `<style>${REPORT_CSS}</style>${buildReportHTML()}`;
+    // decode figures before rendering
+    await Promise.all([...host.querySelectorAll('img')].map(im=> im.decode ? im.decode().catch(()=>{}) : 0));
+    const R = state.report || {};
+    const fname = `รายการคำนวณบันได_${(R.project||'stair').replace(/[\\/:*?"<>|]/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+    const blob = await window.html2pdf().set({
+      margin: [12, 10, 14, 10],
+      filename: fname,
+      image: { type:'jpeg', quality:0.95 },
+      html2canvas: { scale:2, backgroundColor:'#ffffff', useCORS:true, scrollX:0, scrollY:0 },
+      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['avoid-all','css','legacy'], avoid:['tr','.calc','.fig','.fig2','img','h2','h3'] }
+    }).from(host).toPdf().get('pdf').then(pdf=>{
+      const n = pdf.internal.getNumberOfPages();
+      for (let i=1;i<=n;i++){
+        pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(120);
+        pdf.text(`STAIR_FOLDED v${APP_VERSION}  —  ${i} / ${n}`, pdf.internal.pageSize.getWidth()/2, pdf.internal.pageSize.getHeight()-6, { align:'center' });
+      }
+      return pdf.output('blob');
+    });
+    if (claudeDownloads){
+      try { await claudeDownloads.save({ filename:fname, data:blob }); st.textContent = `สร้างแล้ว: ${fname}`; }
+      catch(err){ st.textContent = err && err.code==='declined' ? 'ยกเลิกการบันทึก' : 'บันทึกไม่สำเร็จในหน้านี้'; }
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 4000);
+      st.textContent = `สร้างแล้ว: ${fname}`;
+    }
+    showToast('✓ สร้างรายการคำนวณ PDF แล้ว');
+  } catch(err){
+    console.error(err);
+    st.textContent = 'สร้าง PDF ไม่สำเร็จ — ต้องต่ออินเทอร์เน็ตครั้งแรกเพื่อโหลดตัวสร้าง PDF';
+    showToast('⚠ สร้าง PDF ไม่สำเร็จ');
+  } finally {
+    if (host) host.remove();
+    if (wasDark){ state.ui.theme = 'dark'; applyTheme(); recompute(); }
+    btn.disabled = false;
+  }
+}
+
 /* ============== INIT / RESTORE ============== */
 let restoredAfterUpdate = false;
 if (!window.__SAVED_STATE__){
@@ -2359,7 +2633,7 @@ if (window.__SAVED_STATE__){
     state = { ...d, ...r,
       area:{...d.area, ...(r.area||{})},
       autoActive:{...d.autoActive, ...(r.autoActive||{})},
-      design:{...d.design, ...(r.design||{})}, defl:{...d.defl, ...(r.defl||{})}, ui:{...d.ui, ...(r.ui||{})} };
+      design:{...d.design, ...(r.design||{})}, defl:{...d.defl, ...(r.defl||{})}, report:{...d.report, ...(r.report||{})}, ui:{...d.ui, ...(r.ui||{})} };
     const needShift = !r.geomVer;
     if (r.geo && !r.segs){ // migrate single-flight save
       const g = r.geo; state.B = g.B ?? d.B;
@@ -2407,6 +2681,10 @@ if (window.__SAVED_STATE__){
   } catch(e){ console.error('restore failed', e); }
 }
 $('#rbFlight').addEventListener('change', ()=>recompute());
+[['#rpProject','project'],['#rpPart','part'],['#rpEngineer','engineer']].forEach(([q,k])=>{
+  $(q).addEventListener('change', e=>{ state.report[k] = e.target.value.trim(); });
+});
+$('#reportBtn').addEventListener('click', ()=>makeReportPDF());
 $('#dfLim').addEventListener('change', e=>{ state.defl.limLong = +e.target.value; recompute(); });
 $('#dfLimLL').addEventListener('change', e=>{ state.defl.limLL = +e.target.value; recompute(); });
 $('#themeBtn').addEventListener('click', ()=>{
