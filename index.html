@@ -103,6 +103,8 @@
   }
   header h1{font-size:1.5rem; font-weight:800; letter-spacing:-0.01em;}
   header h1 span{color:var(--steel);}
+  .projbar{flex-basis:100%; display:flex; flex-wrap:wrap; gap:10px 12px; margin-top:8px;}
+  .projbar .field input{background:var(--surface);}
   .brand{display:flex; align-items:baseline; gap:10px;}
   .ver{font-family:'JetBrains Mono',monospace; font-size:0.72rem; font-weight:700; color:var(--steel); border:1px solid var(--steel-light); border-radius:10px; padding:2px 9px; white-space:nowrap;}
   .ver small{font-weight:500; color:var(--ink-soft); margin-left:4px;}
@@ -235,6 +237,11 @@
         <button id="saveOverwriteBtn">📝 Save (ทับไฟล์เดิม)</button>
       </div>
       <div id="saveStatus" style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:var(--ink-soft);">ยังไม่ได้เลือกไฟล์ — กด Save As ก่อน</div>
+    </div>
+    <div class="projbar">
+      <div class="field"><label>ชื่อโครงการ</label><input type="text" id="rpProject" style="width:220px;" placeholder="เช่น อาคารพักอาศัย 3 ชั้น"></div>
+      <div class="field"><label>ส่วนของอาคาร</label><input type="text" id="rpPart" style="width:160px;" placeholder="เช่น บันได ST-1"></div>
+      <div class="field"><label>ผู้คำนวณ</label><input type="text" id="rpEngineer" style="width:160px;"></div>
     </div>
   </header>
 
@@ -471,16 +478,11 @@
   <!-- REPORT -->
   <div class="panel">
     <div class="panel-head"><h2>รายการคำนวณ</h2></div>
-    <div class="controls">
-      <div class="field"><label>ชื่อโครงการ</label><input type="text" id="rpProject" style="width:220px;" placeholder="เช่น อาคารพักอาศัย 3 ชั้น"></div>
-      <div class="field"><label>ส่วนของอาคาร</label><input type="text" id="rpPart" style="width:160px;" placeholder="เช่น บันได ST-1"></div>
-      <div class="field"><label>ผู้คำนวณ</label><input type="text" id="rpEngineer" style="width:160px;"></div>
-    </div>
     <div class="controls" style="border-bottom:none;">
       <button class="primary" id="reportBtn">📄 สร้างรายการคำนวณ (PDF)</button>
       <span id="reportStatus" style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:var(--ink-soft);"></span>
     </div>
-    <div class="hint">ไฟล์ PDF ขนาด A4 ดึงค่าจากที่กรอกและผลคำนวณปัจจุบันทั้งหมด: ข้อมูลออกแบบ รูปตัด น้ำหนักบรรทุก combination ผลวิเคราะห์ (envelope) ขั้นตอนออกแบบเหล็ก แรงเฉือน การแอ่นตัว รูปเหล็กเสริม และสรุปผล · ครั้งแรกต้องต่ออินเทอร์เน็ตเพื่อโหลดตัวสร้าง PDF</div>
+    <div class="hint">ไฟล์ PDF ขนาด A4 ใช้ชื่อโครงการ ส่วนของอาคาร และผู้คำนวณจากหัวกระดาษ และดึงค่าจากที่กรอกและผลคำนวณปัจจุบันทั้งหมด: ข้อมูลออกแบบ รูปตัด น้ำหนักบรรทุก combination ผลวิเคราะห์ (envelope) ขั้นตอนออกแบบเหล็ก แรงเฉือน การแอ่นตัว รูปเหล็กเสริม และสรุปผล · ครั้งแรกต้องต่ออินเทอร์เน็ตเพื่อโหลดตัวสร้าง PDF</div>
   </div>
 
   <footer><span id="footVer"></span> · หน่วย: กำลัง (t), โมเมนต์ (t·m), ระยะ (m), หน่วยแรง (ksc) · แรงลง = ค่าบวก · ผลวิเคราะห์ต่อความกว้าง 1 m</footer>
@@ -540,8 +542,8 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.8.0';
-const APP_DATE = '2026-11-19';
+const APP_VERSION = '1.8.1';
+const APP_DATE = '2026-11-20';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
 document.title = `Stair — บันไดพับผ้าพาดทางยาว (v${APP_VERSION})`;
