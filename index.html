@@ -179,6 +179,9 @@
 
   .pass{color:var(--ok); font-weight:700;}
   .warn{color:var(--warn); font-weight:600;}
+  .sp-in{font-family:'JetBrains Mono',monospace; font-size:0.8rem; width:74px; padding:3px 6px; border:1.5px solid var(--ink-soft); border-radius:3px; background:var(--paper); color:var(--ink);}
+  .sp-in::placeholder{color:var(--ink-soft); opacity:0.75;}
+  .sp-in.sp-forced{border-color:var(--warn); background:var(--surface); font-weight:700;}
   td .pass, td .fail{white-space:nowrap;}
   .fail{color:var(--load); font-weight:700;}
   .rebar{font-weight:800; color:var(--steel);}
@@ -469,7 +472,7 @@
       <table id="checkTable"><tbody></tbody></table>
     </div>
     <div class="hint">
-      d = h − covering − db/2 · ใช้ความหนาแผ่นพับ t เป็นหน้าตัดออกแบบของช่วงบันได (แบบอนุรักษ์) · As,min = 0.0025bh (fy &lt; 4000) / 0.0018bh (fy = 4000) / 0.0018·(4000/fy)·bh ≥ 0.0014bh (fy &gt; 4000) · s,max เหล็กหลัก = min(3h, 45 cm), เหล็กกระจาย = min(5h, 45 cm) · ระยะเรียงปัดลงทีละ 2.5 cm<br>
+      d = h − covering − db/2 · ใช้ความหนาแผ่นพับ t เป็นหน้าตัดออกแบบของช่วงบันได (แบบอนุรักษ์) · As,min = 0.0025bh (fy &lt; 4000) / 0.0018bh (fy = 4000) / 0.0018·(4000/fy)·bh ≥ 0.0014bh (fy &gt; 4000) · s,max เหล็กหลัก = min(3h, 45 cm), เหล็กกระจาย = min(5h, 45 cm) · ระยะเรียงอัตโนมัติปัดลงทีละ 2.5 cm · ช่อง "@ ที่ใช้" กรอกระยะเองได้ (m หรือ cm) เว้นว่าง = อัตโนมัติ · ช่วงพับผ้ากำหนดระยะปลอกช่องเดียว ใช้ตรวจทั้งเหล็กล่างและบน<br>
       φVc = φ·0.53√f'c·b·d (ใช้ |Vu| สูงสุดในช่วง ไม่ลดค่าที่ระยะ d) · บรรทัดการแอ่นตัวใช้ผลจากกล่องตรวจการแอ่นตัว · ความหนาที่ไม่ต้องตรวจการแอ่นตัวตาม ACI 7.3.1 = (L/20 ช่วงเดี่ยว, L/24 ต่อเนื่องหนึ่งข้าง, L/28 ต่อเนื่องสองข้าง, L/10 ยื่น) × (0.4 + fy/7000) ถ้าบางกว่านี้แต่การแอ่นตัวผ่าน ใช้ได้<br>
       ⚠ Detail พับผ้า: ที่มุมพับด้านใน (re-entrant corner) เหล็กรับแรงดึงห้ามดัดอ้อมมุมด้านใน เพราะจะดึงจนคอนกรีตหุ้มระเบิดออก ให้ใช้เหล็กไขว้ผ่านมุมแล้วฝังยึดเลยมุมอย่างน้อยระยะฝัง ld
     </div>
@@ -521,6 +524,7 @@ let state = {
   design: { fc:240, fy:4000, fyT:4000, cover:2.0, db:12, dbT:10, phiB:0.90, phiV:0.85 },
   defl: { xi:2.0, sus:0, limLong:240, limLL:360 },
   report: { project:'', part:'', engineer:'' },
+  spacing: {},   // user-chosen bar spacing (m) per region: { s<id>: { bot, top, hoop, tmp } }
   geomVer: 2,
   ui: { theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light' }
 };
@@ -542,7 +546,7 @@ const bmdSvg = $('#bmdSvg');
 
 /* ============== VERSION ==============
    Bump APP_VERSION / APP_DATE with every release, and set the same number in sw.js (CACHE). */
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.9.0';
 const APP_DATE = '2026-11-20';
 document.getElementById('appVer').innerHTML = `v${APP_VERSION}<small>${APP_DATE}</small>`;
 document.getElementById('footVer').textContent = `STAIR_FOLDED v${APP_VERSION}`;
@@ -1137,7 +1141,7 @@ function pickSpacing(As, db, smax){
   s = Math.floor(s/2.5)*2.5;
   return { s, AsProv: s>0 ? Ab*100/s : 0 };
 }
-function designFlexure(Mu_tm, h_m){
+function designFlexure(Mu_tm, h_m, sForce){
   const D = state.design, b = 100;
   const h = h_m*100;
   const d = h - D.cover - D.db/20;
@@ -1161,16 +1165,33 @@ function designFlexure(Mu_tm, h_m){
   out.AsReq = Math.max(As, AsMin);
   out.governs = As >= AsMin ? 'Mu' : 'As,min';
   const sp = pickSpacing(out.AsReq, D.db, smax);
-  out.s = sp.s; out.AsProv = sp.AsProv;
-  if (sp.s < 7.5){ out.ok=false; out.note = (out.note?out.note+' · ':'') + 'ระยะเรียงถี่เกิน — ใช้เหล็กใหญ่ขึ้น'; }
+  out.sAuto = sp.s; out.smax = smax;
+  const addNote = t=>{ out.ok=false; out.note = (out.note?out.note+' · ':'') + t; };
+  if (sForce > 0){
+    out.forced = true;
+    out.s = sForce; out.AsProv = barArea(D.db)*100/sForce;
+    if (out.AsProv < out.AsReq*(1-1e-6)) addNote(`As ไม่พอ (${fmt(out.AsProv)} < ${fmt(out.AsReq)})`);
+    if (sForce > smax + 1e-6) addNote(`เกิน s,max ${fmt(smax,1)} cm`);
+  } else {
+    out.s = sp.s; out.AsProv = sp.AsProv;
+    if (sp.s < 7.5) addNote('ระยะเรียงถี่เกิน — ใช้เหล็กใหญ่ขึ้น');
+  }
   out.phiMn = D.phiB*out.AsProv*D.fy*(d - out.AsProv*D.fy/(1.7*D.fc*b))/1e5;
   return out;
 }
-function designTemp(h_m){
+function designTemp(h_m, sForce){
   const D = state.design, b = 100, h = h_m*100;
-  const As = rhoMinFor(D.fyT)*b*h;
-  const sp = pickSpacing(As, D.dbT, Math.min(5*h,45));
-  return { As, s:sp.s, AsProv:sp.AsProv };
+  const As = rhoMinFor(D.fyT)*b*h, smax = Math.min(5*h,45);
+  const sp = pickSpacing(As, D.dbT, smax);
+  const out = { As, sAuto:sp.s, smax, s:sp.s, AsProv:sp.AsProv, ok:true, note:'' };
+  if (sForce > 0){
+    out.forced = true; out.s = sForce; out.AsProv = barArea(D.dbT)*100/sForce;
+    const notes = [];
+    if (out.AsProv < As*(1-1e-6)) notes.push(`As ไม่พอ (${fmt(out.AsProv)} < ${fmt(As)})`);
+    if (sForce > smax + 1e-6) notes.push(`เกิน s,max ${fmt(smax,1)} cm`);
+    if (notes.length){ out.ok = false; out.note = notes.join(' · '); }
+  }
+  return out;
 }
 function shearCheck(Vu_t, h_m){
   const D = state.design, b=100, h=h_m*100;
@@ -1227,22 +1248,37 @@ function renderDesign(){
       const va = Math.max(Math.abs(E.Vmax[i]), Math.abs(E.Vmin[i]));
       if (va > vMax){ vMax = va; gV = E.gV[i]; }
     });
-    const bot = designFlexure(mPos, rg.h);
-    const top = designFlexure(mNeg, rg.h);
-    const tmp = designTemp(rg.h);
+    const ov = state.spacing[rg.key] || {}, cm = v=> v > 0 ? v*100 : 0;
+    let bot, top;
+    if (rg.kind==='flight'){
+      // one closed hoop serves both faces: auto = the tighter of the two, or the user's hoop spacing
+      const b0 = designFlexure(mPos, rg.h), t0 = designFlexure(mNeg, rg.h);
+      const sHoop = cm(ov.hoop) || Math.min(b0.s, t0.s);
+      bot = designFlexure(mPos, rg.h, sHoop); top = designFlexure(mNeg, rg.h, sHoop);
+      bot.sAuto = top.sAuto = Math.min(b0.s, t0.s);
+      bot.forced = top.forced = !!cm(ov.hoop);
+    } else {
+      bot = designFlexure(mPos, rg.h, cm(ov.bot));
+      top = designFlexure(mNeg, rg.h, cm(ov.top));
+    }
+    const tmp = designTemp(rg.h, cm(ov.tmp));
     const sh = shearCheck(vMax, rg.h);
     rows.push({ rg, mPos, xPos, mNeg, xNeg, bot, top, tmp, sh, gPos, gNeg, gV });
   });
 
   // header table
   const head = document.createElement('tr');
-  head.innerHTML = `<th>ส่วน</th><th>h (cm)</th><th>d (cm)</th><th>ตำแหน่ง</th><th>Mu (t·m)</th><th>As,req (cm²)</th><th>As,min (cm²)</th><th>เลือก</th><th>φMn (t·m)</th><th>สถานะ</th>`;
+  head.innerHTML = `<th>ส่วน</th><th>h (cm)</th><th>d (cm)</th><th>ตำแหน่ง</th><th>Mu (t·m)</th><th>As,req (cm²)</th><th>As,min (cm²)</th><th>@ อัตโนมัติ</th><th>@ ที่ใช้ (m)</th><th>As ที่ได้ (cm²)</th><th>φMn (t·m)</th><th>สถานะ</th>`;
   tb.appendChild(head);
+  const focusKey = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.sp : null;
+  const spInput = (key, sAuto, forced, sUsed)=>`<input type="text" inputmode="decimal" class="sp-in${forced?' sp-forced':''}" data-sp="${key}" value="${forced ? (sUsed/100).toFixed(3) : ''}" placeholder="${(sAuto/100).toFixed(3)}" title="เว้นว่าง = ใช้ระยะอัตโนมัติ">`;
   rows.forEach(r=>{
-    [['ล่าง (+M)', r.mPos, r.xPos, r.bot, r.gPos], ['บน (−M)', r.mNeg, r.xNeg, r.top, r.gNeg]].forEach(([pos, M, x, des, gov], j)=>{
+    const isF = r.rg.kind==='flight';
+    [['ล่าง (+M)', r.mPos, r.xPos, r.bot, r.gPos, isF ? 'hoop' : 'bot'], ['บน (−M)', r.mNeg, r.xNeg, r.top, r.gNeg, isF ? null : 'top']].forEach(([pos, M, x, des, gov, key], j)=>{
       const tr = document.createElement('tr');
       const nominal = Math.abs(M) < 1e-3;
       const status = des.ok ? `<span class="pass">✓ ${des.governs}</span>` : `<span class="fail">✗ ${des.note}</span>`;
+      const pre = isF ? 'ปลอก ' : '';
       tr.innerHTML = `
         <td>${j===0 ? '<strong>'+r.rg.name+'</strong>' : ''}</td>
         <td class="num">${j===0 ? fmt(des.h,1) : ''}</td>
@@ -1251,12 +1287,39 @@ function renderDesign(){
         <td class="num">${fmt(M)}</td>
         <td class="num">${isNaN(des.AsCalc)?'—':fmt(des.AsCalc)}</td>
         <td class="num">${fmt(des.AsMin)}</td>
-        <td class="rebar">${des.s>0 ? barName(D.db)+'@'+(des.s/100).toFixed(3) : '—'}</td>
+        <td class="num">${des.sAuto>0 ? pre+barName(D.db)+'@'+(des.sAuto/100).toFixed(3) : '—'}</td>
+        <td>${key ? spInput(r.rg.key+':'+key, des.sAuto, des.forced, des.s) : '<span class="info">ปลอกชุดเดียวกัน</span>'}</td>
+        <td class="num">${des.AsProv ? fmt(des.AsProv) : '—'}</td>
         <td class="num">${des.phiMn ? fmt(des.phiMn) : '—'}</td>
         <td>${status}</td>`;
       tb.appendChild(tr);
     });
+    const t = r.tmp, tr = document.createElement('tr');
+    tr.innerHTML = `<td></td><td></td><td></td><td>กระจาย (ตามขวาง)</td><td class="num">—</td>
+      <td class="num">${fmt(t.As)}</td><td class="num">${fmt(t.As)}</td>
+      <td class="num">${barName(D.dbT)}@${(t.sAuto/100).toFixed(3)}</td>
+      <td>${spInput(r.rg.key+':tmp', t.sAuto, t.forced, t.s)}</td>
+      <td class="num">${fmt(t.AsProv)}</td><td class="num">—</td>
+      <td>${t.ok ? '<span class="pass">✓ As,t</span>' : `<span class="fail">✗ ${t.note}</span>`}</td>`;
+    tb.appendChild(tr);
   });
+  tb.querySelectorAll('input[data-sp]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const [rk, f] = e.target.dataset.sp.split(':');
+      const raw = e.target.value.trim();
+      const o = state.spacing[rk] || (state.spacing[rk] = {});
+      if (raw === ''){ delete o[f]; }
+      else {
+        let v = evalMathExpr(raw);
+        if (!(v > 0)){ showToast('⚠ ระยะไม่ถูกต้อง'); e.target.value = o[f] ? o[f].toFixed(3) : ''; return; }
+        if (v >= 1) v = v/100;            // typed in cm, e.g. 15 → 0.15 m
+        o[f] = Math.round(v*1000)/1000;
+      }
+      if (!Object.keys(o).length) delete state.spacing[rk];
+      recompute();
+    });
+  });
+  if (focusKey){ const el_ = tb.querySelector(`input[data-sp="${focusKey}"]`); if (el_) el_.focus(); }
 
   // checks table
   const ch = document.createElement('tr');
@@ -1290,7 +1353,7 @@ function renderDesign(){
     ['เหล็กกระจาย (ตามขวาง)', `${barName(D.dbT)}@${(Math.min(...rows.map(r=>r.tmp.s))/100).toFixed(3)}`],
     ['Mu+ สูงสุด', `${fmt(maxBot.mPos)} t·m @${maxBot.xPos.toFixed(2)}`],
   ];
-  const allOk = rows.every(r=>r.bot.ok && r.top.ok && r.sh.ok) && spanOk.every(Boolean);
+  const allOk = rows.every(r=>r.bot.ok && r.top.ok && r.tmp.ok && r.sh.ok) && spanOk.every(Boolean);
   if (state.segs.some(sg=>!sg.ll) || state.autoActive.ll === false) cards.push(['คำเตือน', '<span class="fail">⚠ LL = 0 หรือปิดอยู่ในบางช่วง</span>']);
   cards.push(['สรุป', allOk ? '<span class="pass">✓ ผ่านทุกรายการ</span>' : '<span class="fail">✗ มีรายการไม่ผ่าน</span>']);
   cards.forEach(([k,v])=>{
@@ -2492,11 +2555,11 @@ function buildReportHTML(){
           lines.push(`As,req = ρbd = ${fmt(rho,5)}×${b}×${f2(d)} = ${f2(des.AsCalc)} cm²/m`);
         } else lines.push(`Mu ≈ 0 → ใช้เหล็กขั้นต่ำ`);
         lines.push(`As,min = ${rhoMin}bh = ${rhoMin}×${b}×${f1(des.h)} = ${f2(des.AsMin)} cm²/m`);
-        lines.push(`ใช้ <b>${nm}@${(des.s/100).toFixed(3)}</b> → As = ${f2(des.AsProv)} cm²/m (s,max = min(3h, 45) = ${f1(Math.min(3*des.h,45))} cm)`);
+        lines.push(`ใช้ <b>${nm}@${(des.s/100).toFixed(3)}</b>${des.forced ? ' (กำหนดเอง)' : ''} → As = ${f2(des.AsProv)} cm²/m ${des.AsProv >= des.AsReq-1e-6 ? '≥' : '<'} ${f2(des.AsReq)} (s,max = min(3h, 45) = ${f1(Math.min(3*des.h,45))} cm)`);
         if (Mu > 1e-3) lines.push(`a = Asfy/(0.85f'c·b) = ${f2(des.AsProv*D.fy/(0.85*D.fc*b))} cm · φMn = ${f2(des.phiMn)} t·m ${des.phiMn >= Mu-1e-6 ? '≥' : '<'} Mu = ${f2(Mu)} t·m`);
         h += `<div class="calc"><div class="calc-h">${lab}: Mu = ${f2(Mu)} t·m/m ${des.ok ? '<span class="okp">✓ ผ่าน</span>' : `<span class="failp">✗ ${esc(des.note)}</span>`}</div>${lines.map(l=>`<div>${l}</div>`).join('')}</div>`;
       });
-      h += `<div class="calc"><div class="calc-h">เหล็กกระจาย (ตามขวาง)</div><div>As,t = ${rhoMinFor(D.fyT)}bh = ${f2(r.tmp.As)} cm²/m → ใช้ <b>${nt}@${(r.tmp.s/100).toFixed(3)}</b> (As = ${f2(r.tmp.AsProv)} cm²/m, s,max = min(5h, 45))</div></div>`;
+      h += `<div class="calc"><div class="calc-h">เหล็กกระจาย (ตามขวาง)</div><div>As,t = ${rhoMinFor(D.fyT)}bh = ${f2(r.tmp.As)} cm²/m → ใช้ <b>${nt}@${(r.tmp.s/100).toFixed(3)}</b>${r.tmp.forced ? ' (กำหนดเอง)' : ''} (As = ${f2(r.tmp.AsProv)} cm²/m, s,max = min(5h, 45)) ${r.tmp.ok ? '' : '<span class="failp">✗ '+esc(r.tmp.note)+'</span>'}</div></div>`;
       if (r.rg.kind==='flight'){
         h += `<div class="calc"><div class="calc-h">จัดเหล็กช่วงพับผ้า</div><div>ปลอกหนึ่งชุดทำหน้าที่ทั้งเหล็กล่างและบน → ใช้ระยะที่น้อยกว่า = min(${(r.bot.s/100).toFixed(3)}, ${(r.top.s/100).toFixed(3)})</div><div>→ <b>ปลอก ${nm}@${(Math.min(r.bot.s, r.top.s)/100).toFixed(3)}</b> ปลายงอ 135° ≥ 6db</div><div>เหล็กช่วยยึด ${nt} ที่มุมด้านในของปลอกทุกมุม</div></div>`;
       }
@@ -2635,7 +2698,7 @@ if (window.__SAVED_STATE__){
     state = { ...d, ...r,
       area:{...d.area, ...(r.area||{})},
       autoActive:{...d.autoActive, ...(r.autoActive||{})},
-      design:{...d.design, ...(r.design||{})}, defl:{...d.defl, ...(r.defl||{})}, report:{...d.report, ...(r.report||{})}, ui:{...d.ui, ...(r.ui||{})} };
+      design:{...d.design, ...(r.design||{})}, defl:{...d.defl, ...(r.defl||{})}, report:{...d.report, ...(r.report||{})}, spacing:{...(r.spacing||{})}, ui:{...d.ui, ...(r.ui||{})} };
     const needShift = !r.geomVer;
     if (r.geo && !r.segs){ // migrate single-flight save
       const g = r.geo; state.B = g.B ?? d.B;
